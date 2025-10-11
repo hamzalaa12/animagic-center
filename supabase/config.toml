@@ -1,1 +1,4 @@
 project_id = "tyiqzlgqtfsxjuuyhbow"
+
+[functions.scrape-anime]
+verify_jwt = false

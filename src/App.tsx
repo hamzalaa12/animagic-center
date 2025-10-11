@@ -8,6 +8,8 @@ import Auth from "./pages/Auth";
 import AnimeDetails from "./pages/AnimeDetails";
 import Watch from "./pages/Watch";
 import Admin from "./pages/Admin";
+import Manga from "./pages/Manga";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +26,8 @@ const App = () => (
           <Route path="/anime/:id" element={<AnimeDetails />} />
           <Route path="/watch/:episodeId" element={<Watch />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/manga" element={<Manga />} />
+          <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

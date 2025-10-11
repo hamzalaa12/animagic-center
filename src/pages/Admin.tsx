@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Session } from "@supabase/supabase-js";
 import { Plus, Film } from "lucide-react";
+import { ContentManager } from "@/components/ContentManager";
+import { AutoScraper } from "@/components/AutoScraper";
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -275,31 +277,11 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="manage">
-            <Card className="glass-effect">
-              <CardHeader>
-                <CardTitle>إدارة المحتوى</CardTitle>
-                <CardDescription>ستتمكن قريباً من تعديل وحذف المحتوى من هنا</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  قريباً... سيتم إضافة هذه الميزة في التحديث القادم
-                </p>
-              </CardContent>
-            </Card>
+            <ContentManager />
           </TabsContent>
 
           <TabsContent value="scraper">
-            <Card className="glass-effect">
-              <CardHeader>
-                <CardTitle>السحب التلقائي للمحتوى</CardTitle>
-                <CardDescription>قريباً: سحب المحتوى تلقائياً من المواقع الأخرى</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  سيتم إضافة ميزة السحب التلقائي من animerco.org والمواقع الأخرى قريباً
-                </p>
-              </CardContent>
-            </Card>
+            <AutoScraper />
           </TabsContent>
         </Tabs>
       </div>

@@ -53,6 +53,15 @@ export const Navbar = () => {
             AnimeStream
           </Link>
 
+          <div className="hidden md:flex items-center gap-6">
+            <Link to="/" className="text-foreground hover:text-primary transition-colors">
+              الرئيسية
+            </Link>
+            <Link to="/manga" className="text-foreground hover:text-primary transition-colors">
+              المانجا
+            </Link>
+          </div>
+
           <div className="hidden md:flex flex-1 max-w-xl">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-5 w-5" />
@@ -66,6 +75,12 @@ export const Navbar = () => {
           <div className="flex items-center gap-4">
             {session ? (
               <>
+                <Link to="/profile">
+                  <Button variant="ghost" className="gap-2">
+                    <User className="h-4 w-4" />
+                    الملف الشخصي
+                  </Button>
+                </Link>
                 {isAdmin && (
                   <Link to="/admin">
                     <Button variant="outline" className="gap-2">
