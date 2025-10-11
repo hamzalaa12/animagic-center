@@ -73,6 +73,13 @@ export const AutoScraper = () => {
             </p>
           </div>
 
+          <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg space-y-2">
+            <h4 className="font-semibold text-sm text-amber-500">⚠️ تنبيه مهم</h4>
+            <p className="text-xs text-muted-foreground">
+              يجب أن يكون الرابط API endpoint يرجع بيانات JSON وليس موقع HTML عادي
+            </p>
+          </div>
+
           <div className="bg-muted/30 p-4 rounded-lg space-y-2">
             <h4 className="font-semibold text-sm">البيانات المطلوبة في JSON:</h4>
             <ul className="text-xs text-muted-foreground space-y-1">

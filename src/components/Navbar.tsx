@@ -57,6 +57,15 @@ export const Navbar = () => {
             <Link to="/" className="text-foreground hover:text-primary transition-colors">
               الرئيسية
             </Link>
+            <Link to="/anime" className="text-foreground hover:text-primary transition-colors">
+              الأنمي
+            </Link>
+            <Link to="/schedule" className="text-foreground hover:text-primary transition-colors">
+              مواعيد الأنمي
+            </Link>
+            <Link to="/movies" className="text-foreground hover:text-primary transition-colors">
+              أفلام الأنمي
+            </Link>
             <Link to="/manga" className="text-foreground hover:text-primary transition-colors">
               المانجا
             </Link>

@@ -26,10 +26,20 @@ serve(async (req) => {
     console.log('Fetching anime data from:', url);
 
     // Fetch data from the anime source
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.statusText}`);
+      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('الرابط المطلوب لا يرجع JSON. يجب أن يكون API endpoint يرجع بيانات JSON وليس موقع HTML');
     }
 
     const data = await response.json();
