@@ -5,11 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Link as LinkIcon } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
-export const AutoScraper = () => {
+export const MangaScraper = () => {
   const { toast } = useToast();
-  const [url, setUrl] = useState("https://get.animerco.org/");
+  const [url, setUrl] = useState("https://azoramoon.com/");
   const [loading, setLoading] = useState(false);
 
   const handleScrape = async (e: React.FormEvent) => {
@@ -18,7 +18,7 @@ export const AutoScraper = () => {
 
     try {
       const { data, error } = await supabase.functions.invoke('scrape-anime', {
-        body: { url, type: 'anime' }
+        body: { url, type: 'manga' }
       });
 
       if (error) throw error;
@@ -26,15 +26,15 @@ export const AutoScraper = () => {
       if (data.success) {
         toast({
           title: "نجح!",
-          description: data.message || "تم سحب المحتوى بنجاح",
+          description: data.message || "تم سحب المانجا بنجاح",
         });
       } else {
-        throw new Error(data.error || "فشل سحب المحتوى");
+        throw new Error(data.error || "فشل سحب المانجا");
       }
     } catch (error: any) {
       toast({
         title: "خطأ",
-        description: error.message || "فشل في سحب المحتوى",
+        description: error.message || "فشل في سحب المانجا",
         variant: "destructive",
       });
     } finally {
@@ -46,37 +46,36 @@ export const AutoScraper = () => {
     <Card className="glass-effect">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Download className="h-5 w-5" />
-          السحب التلقائي للمحتوى
+          <BookOpen className="h-5 w-5" />
+          سحب المانجا تلقائياً
         </CardTitle>
         <CardDescription>
-          سحب المحتوى تلقائياً من المواقع الأخرى
+          سحب المانجا من المواقع المدعومة
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleScrape} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="scrape-url" className="flex items-center gap-2">
-              <LinkIcon className="h-4 w-4" />
-              رابط API المحتوى
+            <Label htmlFor="manga-url">
+              رابط صفحة المانجا
             </Label>
             <Input
-              id="scrape-url"
+              id="manga-url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://get.animerco.org/"
+              placeholder="https://azoramoon.com/manga/..."
               required
               dir="ltr"
             />
             <p className="text-xs text-muted-foreground">
-              أدخل رابط صفحة الأنمي الكاملة
+              أدخل رابط صفحة المانجا الكاملة
             </p>
           </div>
 
           <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg space-y-2">
-            <h4 className="font-semibold text-sm text-amber-500">💡 كيف يعمل</h4>
+            <h4 className="font-semibold text-sm text-amber-500">💡 ملاحظة</h4>
             <p className="text-xs text-muted-foreground">
-              النظام يقوم بسحب البيانات من صفحة HTML مباشرة وتحليلها تلقائياً
+              النظام يقوم بسحب البيانات من صفحة HTML مباشرة
             </p>
           </div>
 
@@ -85,8 +84,8 @@ export const AutoScraper = () => {
             className="w-full bg-gradient-to-r from-primary to-secondary"
             disabled={loading}
           >
-            <Download className="h-4 w-4 mr-2" />
-            {loading ? "جاري السحب..." : "سحب المحتوى"}
+            <BookOpen className="h-4 w-4 mr-2" />
+            {loading ? "جاري السحب..." : "سحب المانجا"}
           </Button>
         </form>
 
@@ -94,11 +93,11 @@ export const AutoScraper = () => {
           <h4 className="font-semibold mb-3">المواقع المدعومة:</h4>
           <div className="space-y-2">
             <div className="flex items-center gap-2 p-3 bg-muted/20 rounded">
-              <span className="text-sm">animerco.org</span>
+              <span className="text-sm">azoramoon.com</span>
               <span className="text-xs text-muted-foreground">(افتراضي)</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              يمكنك إضافة مواقع أخرى من خلال تبويب "المصادر"
+              يمكنك إضافة مواقع أخرى من خلال إدارة المصادر
             </p>
           </div>
         </div>

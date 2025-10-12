@@ -14,6 +14,8 @@ import { Session } from "@supabase/supabase-js";
 import { Plus, Film } from "lucide-react";
 import { ContentManager } from "@/components/ContentManager";
 import { AutoScraper } from "@/components/AutoScraper";
+import { MangaScraper } from "@/components/MangaScraper";
+import { SourcesManager } from "@/components/SourcesManager";
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -128,10 +130,12 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="add-anime" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="add-anime">إضافة أنمي</TabsTrigger>
             <TabsTrigger value="manage">إدارة المحتوى</TabsTrigger>
-            <TabsTrigger value="scraper">السحب التلقائي</TabsTrigger>
+            <TabsTrigger value="scraper">سحب أنمي</TabsTrigger>
+            <TabsTrigger value="manga-scraper">سحب مانجا</TabsTrigger>
+            <TabsTrigger value="sources">المصادر</TabsTrigger>
           </TabsList>
 
           <TabsContent value="add-anime">
@@ -282,6 +286,14 @@ const Admin = () => {
 
           <TabsContent value="scraper">
             <AutoScraper />
+          </TabsContent>
+
+          <TabsContent value="manga-scraper">
+            <MangaScraper />
+          </TabsContent>
+
+          <TabsContent value="sources">
+            <SourcesManager />
           </TabsContent>
         </Tabs>
       </div>
