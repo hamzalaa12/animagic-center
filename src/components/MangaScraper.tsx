@@ -9,7 +9,7 @@ import { BookOpen } from "lucide-react";
 
 export const MangaScraper = () => {
   const { toast } = useToast();
-  const [url, setUrl] = useState("https://azoramoon.com/");
+  const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleScrape = async (e: React.FormEvent) => {
@@ -63,20 +63,22 @@ export const MangaScraper = () => {
               id="manga-url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://azoramoon.com/manga/..."
+              placeholder="https://azoramoon.com/manga/one-piece"
               required
               dir="ltr"
             />
             <p className="text-xs text-muted-foreground">
-              أدخل رابط صفحة المانجا الكاملة
+              أدخل رابط صفحة المانجا المراد سحبها (HTML)
             </p>
           </div>
 
-          <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg space-y-2">
-            <h4 className="font-semibold text-sm text-amber-500">💡 ملاحظة</h4>
-            <p className="text-xs text-muted-foreground">
-              النظام يقوم بسحب البيانات من صفحة HTML مباشرة
-            </p>
+          <div className="bg-purple-500/10 border border-purple-500/30 p-4 rounded-lg space-y-2">
+            <h4 className="font-semibold text-sm text-purple-500">💡 كيف يعمل</h4>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>النظام يدخل إلى صفحة المانجا ويسحب جميع البيانات تلقائياً</li>
+              <li>يستخرج العنوان، الوصف، الصور، الفصول، الصفحات، المؤلف، والأنواع</li>
+              <li>يحفظ جميع المعلومات في قاعدة البيانات</li>
+            </ul>
           </div>
 
           <Button

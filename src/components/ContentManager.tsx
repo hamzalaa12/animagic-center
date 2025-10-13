@@ -1,182 +1,173 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Edit, Trash2, Film } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Trash2, Search, Eye } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
-interface Anime {
+interface ContentItem {
   id: string;
   title: string;
-  title_arabic: string | null;
-  cover_image: string | null;
-  type: string | null;
-  status: string | null;
-  rating: number | null;
+  title_arabic?: string;
+  type?: string;
+  status?: string;
+  release_year?: number;
+  rating?: number;
+  created_at: string;
 }
 
-export const ContentManager = () => {
+export const ContentManager = ({ contentType }: { contentType: 'anime' | 'manga' }) => {
   const { toast } = useToast();
-  const [animeList, setAnimeList] = useState<Anime[]>([]);
+  const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedAnimeId, setSelectedAnimeId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    fetchAnimeList();
-  }, []);
+    fetchItems();
+  }, [contentType]);
 
-  const fetchAnimeList = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('anime')
-      .select('id, title, title_arabic, cover_image, type, status, rating')
-      .order('created_at', { ascending: false });
+  const fetchItems = async () => {
+    try {
+      const { data, error } = await supabase
+        .from(contentType)
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
+      if (error) throw error;
+      setItems(data || []);
+    } catch (error: any) {
       toast({
         title: "خطأ",
-        description: error.message,
+        description: "فشل في تحميل المحتوى",
         variant: "destructive",
       });
-    } else {
-      setAnimeList(data || []);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleDelete = async () => {
-    if (!selectedAnimeId) return;
+  const handleDelete = async (id: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذا العنصر؟")) return;
 
-    const { error } = await supabase
-      .from('anime')
-      .delete()
-      .eq('id', selectedAnimeId);
+    try {
+      const { error } = await supabase
+        .from(contentType)
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      toast({
-        title: "خطأ",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
+      if (error) throw error;
+
       toast({
         title: "نجح!",
-        description: "تم حذف الأنمي بنجاح",
+        description: "تم الحذف بنجاح",
       });
-      fetchAnimeList();
-    }
 
-    setDeleteDialogOpen(false);
-    setSelectedAnimeId(null);
+      fetchItems();
+    } catch (error: any) {
+      toast({
+        title: "خطأ",
+        description: "فشل في حذف العنصر",
+        variant: "destructive",
+      });
+    }
   };
 
+  const filteredItems = items.filter(item =>
+    item.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.title_arabic?.includes(searchQuery)
+  );
+
   if (loading) {
-    return (
-      <Card className="glass-effect">
-        <CardContent className="py-12">
-          <p className="text-muted-foreground text-center">جاري التحميل...</p>
-        </CardContent>
-      </Card>
-    );
+    return <div className="text-center py-8">جاري التحميل...</div>;
   }
 
   return (
-    <>
-      <Card className="glass-effect">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Film className="h-5 w-5" />
-            إدارة المحتوى
-          </CardTitle>
-          <CardDescription>تعديل وحذف الأنمي الموجود</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {animeList.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              لا يوجد محتوى بعد
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {animeList.map((anime) => (
-                <div
-                  key={anime.id}
-                  className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  {anime.cover_image && (
-                    <img
-                      src={anime.cover_image}
-                      alt={anime.title}
-                      className="w-16 h-20 object-cover rounded"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <h3 className="font-semibold">{anime.title_arabic || anime.title}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {anime.type} • {anime.status} • ⭐ {anime.rating || 'N/A'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => {
-                        toast({
-                          title: "قريباً",
-                          description: "ميزة التعديل قريباً",
-                        });
-                      }}
-                    >
-                      <Edit className="h-4 w-4" />
-                      تعديل
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => {
-                        setSelectedAnimeId(anime.id);
-                        setDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      حذف
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+    <Card className="glass-effect">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Eye className="h-5 w-5" />
+          إدارة {contentType === 'anime' ? 'الأنمي' : 'المانجا'}
+        </CardTitle>
+        <CardDescription>
+          عرض وإدارة جميع {contentType === 'anime' ? 'الأنمي' : 'المانجا'} المتاحة
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="flex gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ابحث..."
+              className="pr-10"
+            />
+          </div>
+          <Button onClick={fetchItems} variant="outline">تحديث</Button>
+        </div>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>هل أنت متأكد؟</AlertDialogTitle>
-            <AlertDialogDescription>
-              هذا الإجراء لا يمكن التراجع عنه. سيتم حذف الأنمي نهائياً من قاعدة البيانات.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>إلغاء</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive">
-              حذف
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>العنوان</TableHead>
+                <TableHead>النوع</TableHead>
+                <TableHead>الحالة</TableHead>
+                <TableHead>السنة</TableHead>
+                <TableHead>التقييم</TableHead>
+                <TableHead className="text-left">الإجراءات</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredItems.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    لا توجد عناصر
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredItems.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{item.title}</div>
+                        {item.title_arabic && (
+                          <div className="text-xs text-muted-foreground">{item.title_arabic}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{item.type || 'غير محدد'}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={item.status === 'ongoing' ? 'default' : 'outline'}>
+                        {item.status === 'ongoing' ? 'مستمر' : item.status === 'completed' ? 'مكتمل' : 'قادم'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{item.release_year || '-'}</TableCell>
+                    <TableCell>{item.rating ? item.rating.toFixed(1) : '0.0'}</TableCell>
+                    <TableCell className="text-left">
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => window.open(`/${contentType}/${item.id}`, '_blank')}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="text-sm text-muted-foreground">إجمالي: {filteredItems.length} عنصر</div>
+      </CardContent>
+    </Card>
   );
 };

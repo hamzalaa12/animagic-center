@@ -281,7 +281,7 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="manage">
-            <ContentManager />
+            <ContentManager contentType="anime" />
           </TabsContent>
 
           <TabsContent value="scraper">

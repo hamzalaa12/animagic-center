@@ -9,7 +9,7 @@ import { Download, Link as LinkIcon } from "lucide-react";
 
 export const AutoScraper = () => {
   const { toast } = useToast();
-  const [url, setUrl] = useState("https://get.animerco.org/");
+  const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleScrape = async (e: React.FormEvent) => {
@@ -64,20 +64,23 @@ export const AutoScraper = () => {
               id="scrape-url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://get.animerco.org/"
+              placeholder="https://animerco.org/anime/attack-on-titan"
               required
               dir="ltr"
             />
             <p className="text-xs text-muted-foreground">
-              أدخل رابط صفحة الأنمي الكاملة
+              أدخل رابط صفحة الأنمي المراد سحبه (HTML)
             </p>
           </div>
 
-          <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg space-y-2">
-            <h4 className="font-semibold text-sm text-amber-500">💡 كيف يعمل</h4>
-            <p className="text-xs text-muted-foreground">
-              النظام يقوم بسحب البيانات من صفحة HTML مباشرة وتحليلها تلقائياً
-            </p>
+          <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg space-y-2">
+            <h4 className="font-semibold text-sm text-blue-500">💡 كيف يعمل</h4>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>النظام يدخل إلى صفحة الأنمي ويسحب جميع البيانات تلقائياً</li>
+              <li>يستخرج العنوان، الوصف، الصور، المواسم، الحلقات، والأنواع</li>
+              <li>يحفظ جميع المعلومات في قاعدة البيانات</li>
+              <li>يدعم معظم مواقع الأنمي الشهيرة</li>
+            </ul>
           </div>
 
           <Button
