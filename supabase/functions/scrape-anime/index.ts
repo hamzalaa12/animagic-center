@@ -73,15 +73,32 @@ serve(async (req) => {
 async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   console.log('Starting anime scrape from URL:', url);
   
-  // Extract anime data with multiple selector strategies
-  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, h1, .post-title');
-  const title = titleElement?.textContent?.trim() || 'Untitled';
+  // Extract anime data with improved selector strategies
+  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, h1');
+  const title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || 'Untitled';
   
-  const titleArabicElement = doc.querySelector('.arabic-title, .title-arabic, [lang="ar"]');
-  const title_arabic = titleArabicElement?.textContent?.trim();
+  // Try to extract Arabic title from meta tags or specific elements
+  let title_arabic = null;
+  const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
+  if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
+    title_arabic = metaArabicTitle.trim();
+  } else {
+    // Look for Arabic text in title or specific elements
+    const arabicInTitle = title.match(/[\u0600-\u06FF\s]+/)?.[0]?.trim();
+    if (arabicInTitle) {
+      title_arabic = arabicInTitle;
+    }
+  }
   
-  const descElement = doc.querySelector('.entry-content, .description, .synopsis, .story, article p, .content p');
-  const description = descElement?.textContent?.trim();
+  // Extract description from meta or content
+  let description = null;
+  const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
+  if (metaDesc) {
+    description = metaDesc.trim();
+  } else {
+    const descElement = doc.querySelector('.story-content, .entry-content p, .description, .synopsis, .anime-description, article p');
+    description = descElement?.textContent?.trim().substring(0, 1000);
+  }
   
   // Try multiple image selectors
   const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, article img, .post-thumbnail img, img[class*="cover"], img[class*="poster"]');
@@ -324,15 +341,32 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
 async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   console.log('Starting manga scrape from URL:', url);
   
-  // Extract manga data with multiple selector strategies
+  // Extract manga data with improved selector strategies
   const titleElement = doc.querySelector('h1.entry-title, h1.post-title, h1.title, .manga-title, h1');
-  const title = titleElement?.textContent?.trim() || 'Untitled';
+  const title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || 'Untitled';
   
-  const titleArabicElement = doc.querySelector('.arabic-title, .title-arabic, [lang="ar"]');
-  const title_arabic = titleArabicElement?.textContent?.trim();
+  // Try to extract Arabic title from meta tags or specific elements
+  let title_arabic = null;
+  const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
+  if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
+    title_arabic = metaArabicTitle.trim();
+  } else {
+    // Look for Arabic text in title
+    const arabicInTitle = title.match(/[\u0600-\u06FF\s]+/)?.[0]?.trim();
+    if (arabicInTitle) {
+      title_arabic = arabicInTitle;
+    }
+  }
   
-  const descElement = doc.querySelector('.entry-content, .description, .synopsis, .summary, article p, .content p');
-  const description = descElement?.textContent?.trim();
+  // Extract description from meta or content
+  let description = null;
+  const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
+  if (metaDesc) {
+    description = metaDesc.trim();
+  } else {
+    const descElement = doc.querySelector('.story-content, .entry-content p, .description, .synopsis, .summary, .manga-description, article p');
+    description = descElement?.textContent?.trim().substring(0, 1000);
+  }
   
   const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .summary_image img, article img, img[class*="cover"]');
   const cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src');

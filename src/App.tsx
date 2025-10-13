@@ -12,6 +12,8 @@ import Movies from "./pages/Movies";
 import Watch from "./pages/Watch";
 import Admin from "./pages/Admin";
 import Manga from "./pages/Manga";
+import MangaDetails from "./pages/MangaDetails";
+import ReadChapter from "./pages/ReadChapter";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
@@ -33,6 +35,8 @@ const App = () => (
           <Route path="/watch/:episodeId" element={<Watch />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/manga" element={<Manga />} />
+          <Route path="/manga/:id" element={<MangaDetails />} />
+          <Route path="/manga/:mangaId/chapter/:chapterId" element={<ReadChapter />} />
           <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
