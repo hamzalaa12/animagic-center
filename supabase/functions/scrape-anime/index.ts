@@ -26,16 +26,25 @@ serve(async (req) => {
 
     console.log(`Fetching ${type} data from:`, url);
 
-    // Fetch HTML content
+    // Fetch HTML content with improved headers
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
       }
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+      console.error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+      throw new Error(`فشل في الوصول للصفحة. الموقع قد يكون محمي بـ Cloudflare أو يتطلب متصفح حقيقي. حاول نسخ المحتوى يدوياً.`);
     }
 
     const html = await response.text();
@@ -73,39 +82,68 @@ serve(async (req) => {
 async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   console.log('Starting anime scrape from URL:', url);
   
-  // Extract anime data with improved selector strategies
-  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, h1');
-  const title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || 'Untitled';
+  // Extract anime data with improved selectors for Arabic anime sites
+  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, .single-title, .page-title, h1');
+  let title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
   
-  // Try to extract Arabic title from meta tags or specific elements
+  // Clean title from extra text
+  title = title.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|أونلاين/gi, '').trim() || 'Untitled';
+  
+  // Try to extract Arabic title
   let title_arabic = null;
   const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
   if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    title_arabic = metaArabicTitle.trim();
-  } else {
-    // Look for Arabic text in title or specific elements
-    const arabicInTitle = title.match(/[\u0600-\u06FF\s]+/)?.[0]?.trim();
-    if (arabicInTitle) {
-      title_arabic = arabicInTitle;
+    title_arabic = metaArabicTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين/gi, '').trim();
+  }
+  
+  // Look for Arabic text in title
+  const arabicInTitle = title.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
+  if (arabicInTitle && arabicInTitle.length > 3) {
+    title_arabic = arabicInTitle;
+  }
+  
+  // Try alternative selectors for Arabic title
+  if (!title_arabic) {
+    const arabicTitleEl = doc.querySelector('.arabic-title, [lang="ar"]');
+    if (arabicTitleEl) {
+      title_arabic = arabicTitleEl.textContent?.trim();
     }
   }
   
-  // Extract description from meta or content
+  // Extract description
   let description = null;
   const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
-  if (metaDesc) {
-    description = metaDesc.trim();
+  if (metaDesc && metaDesc.length > 20) {
+    description = metaDesc.trim().substring(0, 1000);
   } else {
-    const descElement = doc.querySelector('.story-content, .entry-content p, .description, .synopsis, .anime-description, article p');
-    description = descElement?.textContent?.trim().substring(0, 1000);
+    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .anime-description, .summary, article > p, .post-content > p');
+    if (descElement) {
+      description = descElement.textContent?.trim().substring(0, 1000);
+    }
   }
   
-  // Try multiple image selectors
-  const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, article img, .post-thumbnail img, img[class*="cover"], img[class*="poster"]');
-  const cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src');
+  // Clean description from scripts and styles
+  if (description) {
+    description = description.replace(/<script[^>]*>.*?<\/script>/gi, '').replace(/<style[^>]*>.*?<\/style>/gi, '').trim();
+  }
   
-  const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img');
-  const banner_image = bannerImg?.getAttribute('src') || bannerImg?.getAttribute('data-src') || cover_image;
+  // Extract images with better selectors
+  const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .anime-image img, .series-image img, article img:first-of-type, .post-thumbnail img, img[class*="cover"], img[class*="poster"]');
+  let cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src') || coverImg?.getAttribute('data-lazy-src');
+  
+  // Make sure image URL is absolute
+  if (cover_image && cover_image.startsWith('/')) {
+    const urlObj = new URL(url);
+    cover_image = `${urlObj.protocol}//${urlObj.host}${cover_image}`;
+  }
+  
+  const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img, .backdrop img');
+  let banner_image = bannerImg?.getAttribute('src') || bannerImg?.getAttribute('data-src') || cover_image;
+  
+  if (banner_image && banner_image.startsWith('/')) {
+    const urlObj = new URL(url);
+    banner_image = `${urlObj.protocol}//${urlObj.host}${banner_image}`;
+  }
   
   // Extract type (tv, movie, ova)
   const typeElement = doc.querySelector('.type, .anime-type, [class*="type"]');
@@ -161,8 +199,8 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
 
     console.log('Anime inserted:', insertedAnime.id);
 
-  // Try to extract seasons and episodes from HTML
-  const seasonElements = doc.querySelectorAll('.season, .season-item, .seasons-list li, [class*="season"]');
+  // Extract seasons and episodes with better selectors
+  const seasonElements = doc.querySelectorAll('.season, .season-item, .seasons-list > li, .season-block, [id*="season"], [class*="season-"]');
   console.log('Found seasons:', seasonElements.length);
   
   if (seasonElements && seasonElements.length > 0) {
@@ -188,8 +226,8 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
         continue;
       }
 
-      // Extract episodes for this season
-      const episodeElements = seasonEl.querySelectorAll('.episode, .episode-item, .episodes-list li, a[href*="episode"], [class*="episode"]');
+      // Extract episodes for this season with improved selectors
+      const episodeElements = seasonEl.querySelectorAll('.episode, .episode-item, .episodes-list > li, .episode-block, a[href*="episode"], a[href*="الحلقة"], [class*="episode-"], [id*="episode"]');
       console.log(`Season ${i + 1} - Found episodes:`, episodeElements.length);
       
       for (let j = 0; j < episodeElements.length; j++) {
@@ -216,23 +254,31 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
           continue;
         }
 
-        // Extract video servers
-        const serverLinks = episodeEl.querySelectorAll('a[href*="watch"], a[href*="video"], .server-link, .servers a, [class*="server"] a');
+        // Extract video servers with better logic
+        const serverLinks = episodeEl.querySelectorAll('a[href*="watch"], a[href*="video"], a[href*="player"], .server-link, .servers a, [class*="server"] a, .quality-buttons a');
         console.log(`Episode ${j + 1} - Found servers:`, serverLinks.length);
         
         for (let k = 0; k < serverLinks.length; k++) {
           const serverLink = serverLinks[k];
-          const serverName = serverLink.textContent?.trim() || serverLink.getAttribute('title') || `Server ${k + 1}`;
-          const videoUrl = serverLink.getAttribute('href') || '';
+          const serverName = serverLink.textContent?.trim() || serverLink.getAttribute('title') || serverLink.getAttribute('data-server') || `السيرفر ${k + 1}`;
+          let videoUrl = serverLink.getAttribute('href') || serverLink.getAttribute('data-url') || '';
           
-          const serverData = {
-            episode_id: insertedEpisode.id,
-            server_name: serverName,
-            video_url: videoUrl,
-            quality: '1080p'
-          };
+          // Make URL absolute if needed
+          if (videoUrl && videoUrl.startsWith('/')) {
+            const urlObj = new URL(url);
+            videoUrl = `${urlObj.protocol}//${urlObj.host}${videoUrl}`;
+          }
+          
+          if (videoUrl && videoUrl.length > 10) {
+            const serverData = {
+              episode_id: insertedEpisode.id,
+              server_name: serverName.substring(0, 100),
+              video_url: videoUrl,
+              quality: '1080p'
+            };
 
-          await supabaseClient.from('video_servers').insert([serverData]);
+            await supabaseClient.from('video_servers').insert([serverData]);
+          }
         }
       }
     }
@@ -253,7 +299,7 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
       .single();
 
     if (!seasonError && defaultSeason) {
-      const episodeElements = doc.querySelectorAll('.episode, .episode-item, .episodes-list li, a[href*="episode"], [class*="episode"]');
+      const episodeElements = doc.querySelectorAll('.episode, .episode-item, .episodes-list > li, .episode-block, a[href*="episode"], a[href*="الحلقة"], [class*="episode-"], [id*="episode"]');
       console.log('Found episodes in page:', episodeElements.length);
       
       for (let j = 0; j < episodeElements.length; j++) {
@@ -276,24 +322,33 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
           .single();
 
         if (!episodeError && insertedEpisode) {
-          const serverLinks = episodeEl.querySelectorAll('a[href*="watch"], a[href*="video"], .server-link, .servers a');
+          const serverLinks = episodeEl.querySelectorAll('a[href*="watch"], a[href*="video"], a[href*="player"], .server-link, .servers a, [class*="server"] a');
           for (let k = 0; k < serverLinks.length; k++) {
             const serverLink = serverLinks[k];
-            const serverData = {
-              episode_id: insertedEpisode.id,
-              server_name: serverLink.textContent?.trim() || `Server ${k + 1}`,
-              video_url: serverLink.getAttribute('href') || '',
-              quality: '1080p'
-            };
-            await supabaseClient.from('video_servers').insert([serverData]);
+            let videoUrl = serverLink.getAttribute('href') || serverLink.getAttribute('data-url') || '';
+            
+            if (videoUrl && videoUrl.startsWith('/')) {
+              const urlObj = new URL(url);
+              videoUrl = `${urlObj.protocol}//${urlObj.host}${videoUrl}`;
+            }
+            
+            if (videoUrl && videoUrl.length > 10) {
+              const serverData = {
+                episode_id: insertedEpisode.id,
+                server_name: serverLink.textContent?.trim() || `السيرفر ${k + 1}`,
+                video_url: videoUrl,
+                quality: '1080p'
+              };
+              await supabaseClient.from('video_servers').insert([serverData]);
+            }
           }
         }
       }
     }
   }
 
-  // Extract genres
-  const genreElements = doc.querySelectorAll('.genre, .tag, .category, .genres a, .tags a, [class*="genre"] a, [class*="tag"] a');
+  // Extract genres with better selectors
+  const genreElements = doc.querySelectorAll('.genre, .tag, .category, .genres a, .tags a, .terms a, [class*="genre"] a, [class*="tag"] a, [rel="tag"]');
   console.log('Found genres:', genreElements.length);
   
   for (let i = 0; i < genreElements.length; i++) {
@@ -341,38 +396,59 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
 async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   console.log('Starting manga scrape from URL:', url);
   
-  // Extract manga data with improved selector strategies
-  const titleElement = doc.querySelector('h1.entry-title, h1.post-title, h1.title, .manga-title, h1');
-  const title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || 'Untitled';
+  // Extract manga data with improved selectors for Arabic manga sites
+  const titleElement = doc.querySelector('h1.entry-title, h1.post-title, h1.title, .manga-title, .post-title-content, .single-title, h1');
+  let title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
   
-  // Try to extract Arabic title from meta tags or specific elements
+  // Clean title from extra text
+  title = title.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين|قراءة/gi, '').trim() || 'Untitled';
+  
+  // Try to extract Arabic title
   let title_arabic = null;
   const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
   if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    title_arabic = metaArabicTitle.trim();
+    title_arabic = metaArabicTitle.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين/gi, '').trim();
+  }
+  
+  // Look for Arabic text in title
+  const arabicInTitle = title.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
+  if (arabicInTitle && arabicInTitle.length > 3) {
+    title_arabic = arabicInTitle;
+  }
+  
+  // Extract description
+  let description = null;
+  const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
+  if (metaDesc && metaDesc.length > 20) {
+    description = metaDesc.trim().substring(0, 1000);
   } else {
-    // Look for Arabic text in title
-    const arabicInTitle = title.match(/[\u0600-\u06FF\s]+/)?.[0]?.trim();
-    if (arabicInTitle) {
-      title_arabic = arabicInTitle;
+    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .summary, .manga-description, .manga-excerpt, article > p, .post-content > p, .summary__content');
+    if (descElement) {
+      description = descElement.textContent?.trim().substring(0, 1000);
     }
   }
   
-  // Extract description from meta or content
-  let description = null;
-  const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
-  if (metaDesc) {
-    description = metaDesc.trim();
-  } else {
-    const descElement = doc.querySelector('.story-content, .entry-content p, .description, .synopsis, .summary, .manga-description, article p');
-    description = descElement?.textContent?.trim().substring(0, 1000);
+  // Clean description
+  if (description) {
+    description = description.replace(/<script[^>]*>.*?<\/script>/gi, '').replace(/<style[^>]*>.*?<\/style>/gi, '').trim();
   }
   
-  const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .summary_image img, article img, img[class*="cover"]');
-  const cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src');
+  // Extract images
+  const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .summary_image img, .manga-image img, .series-thumbnail img, article img:first-of-type, img[class*="cover"]');
+  let cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src') || coverImg?.getAttribute('data-lazy-src');
   
-  const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img');
-  const banner_image = bannerImg?.getAttribute('src') || bannerImg?.getAttribute('data-src') || cover_image;
+  if (cover_image && cover_image.startsWith('/')) {
+    const urlObj = new URL(url);
+    cover_image = `${urlObj.protocol}//${urlObj.host}${cover_image}`;
+  }
+  
+  const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img, .backdrop img');
+  let banner_image = bannerImg?.getAttribute('src') || bannerImg?.getAttribute('data-src') || cover_image;
+  
+  if (banner_image && banner_image.startsWith('/')) {
+    const urlObj = new URL(url);
+    banner_image = `${urlObj.protocol}//${urlObj.host}${banner_image}`;
+  }
   
   // Extract type (manga, manhwa, manhua)
   const typeElement = doc.querySelector('.type, .manga-type, [class*="type"]');
@@ -437,24 +513,28 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
 
   console.log('Manga inserted:', insertedManga.id);
 
-  // Extract chapters
-  const chapterElements = doc.querySelectorAll('.chapter, .chapter-item, .wp-manga-chapter, .chapters-list li, a[href*="chapter"], [class*="chapter"]');
+  // Extract chapters with better selectors
+  const chapterElements = doc.querySelectorAll('.chapter, .chapter-item, .wp-manga-chapter, .chapters-list > li, .chapter-link, a[href*="chapter"], a[href*="الفصل"], [class*="chapter-"], li.wp-manga-chapter');
   console.log('Found chapters:', chapterElements.length);
   
   for (let i = 0; i < chapterElements.length; i++) {
     const chapterEl = chapterElements[i];
-    const chapterTitle = chapterEl.querySelector('.chapter-title, a, span')?.textContent?.trim() || `Chapter ${i + 1}`;
+    const chapterLink = chapterEl.querySelector('a') || (chapterEl.tagName === 'A' ? chapterEl : null);
+    const chapterTitle = chapterLink?.textContent?.trim() || chapterEl.textContent?.trim() || `الفصل ${i + 1}`;
     
     // Extract chapter number from title if possible
-    const chapterNumMatch = chapterTitle.match(/chapter\s*(\d+)/i) || chapterTitle.match(/الفصل\s*(\d+)/);
+    const chapterNumMatch = chapterTitle.match(/chapter\s*(\d+(?:\.\d+)?)/i) || chapterTitle.match(/الفصل\s*(\d+(?:\.\d+)?)/);
     const chapter_number = chapterNumMatch ? parseFloat(chapterNumMatch[1]) : i + 1;
     
     const chapterThumbnail = chapterEl.querySelector('img')?.getAttribute('src') || chapterEl.querySelector('img')?.getAttribute('data-src');
     
+    // Get chapter URL for potential page extraction
+    const chapterUrl = chapterLink?.getAttribute('href');
+    
     const chapterData = {
       manga_id: insertedManga.id,
       chapter_number,
-      title: chapterTitle,
+      title: chapterTitle.substring(0, 255),
       title_arabic: chapterEl.querySelector('.chapter-title-arabic, [lang="ar"]')?.textContent?.trim(),
       thumbnail: chapterThumbnail
     };
@@ -470,24 +550,59 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
       continue;
     }
 
-    // Extract pages (if available on the same page)
-    const pageElements = chapterEl.querySelectorAll('img.page, .page img, .reading-content img, .chapter-content img');
-    console.log(`Chapter ${i + 1} - Found pages:`, pageElements.length);
+    // Try to extract pages from the chapter element or fetch chapter page
+    let pageElements = chapterEl.querySelectorAll('img.page, .page img, .reading-content img, .chapter-content img, .page-break img');
+    
+    // If no pages found in listing, try to fetch the chapter page
+    if (pageElements.length === 0 && chapterUrl) {
+      try {
+        console.log(`Fetching chapter page: ${chapterUrl}`);
+        const chapterResponse = await fetch(chapterUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        });
+        
+        if (chapterResponse.ok) {
+          const chapterHtml = await chapterResponse.text();
+          const chapterDoc = new DOMParser().parseFromString(chapterHtml, 'text/html');
+          
+          if (chapterDoc) {
+            pageElements = chapterDoc.querySelectorAll('img.page, .page img, .reading-content img, .chapter-content img, .page-break img, #readerarea img, .reader-area img');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch chapter page:', e);
+      }
+    }
+    
+    console.log(`Chapter ${chapter_number} - Found pages:`, pageElements.length);
     
     for (let j = 0; j < pageElements.length; j++) {
-      const pageImg = pageElements[j].getAttribute('src') || pageElements[j].getAttribute('data-src');
-      if (pageImg && !pageImg.includes('icon') && !pageImg.includes('logo')) {
-        await supabaseClient.from('manga_pages').insert([{
-          chapter_id: insertedChapter.id,
-          page_number: j + 1,
-          image_url: pageImg
-        }]);
+      let pageImg = pageElements[j].getAttribute('src') || pageElements[j].getAttribute('data-src') || pageElements[j].getAttribute('data-lazy-src');
+      
+      if (pageImg) {
+        // Make URL absolute
+        if (pageImg.startsWith('/')) {
+          const urlObj = new URL(url);
+          pageImg = `${urlObj.protocol}//${urlObj.host}${pageImg}`;
+        }
+        
+        // Filter out icons, logos, and very small images
+        if (pageImg && !pageImg.includes('icon') && !pageImg.includes('logo') && !pageImg.includes('avatar')) {
+          await supabaseClient.from('manga_pages').insert([{
+            chapter_id: insertedChapter.id,
+            page_number: j + 1,
+            image_url: pageImg
+          }]);
+        }
       }
     }
   }
 
   // Extract genres
-  const genreElements = doc.querySelectorAll('.genre, .tag, .category, .genres a, .tags a, .wp-manga-tags a, [class*="genre"] a');
+  const genreElements = doc.querySelectorAll('.genre, .tag, .category, .genres a, .tags a, .wp-manga-tags a, .terms a, [class*="genre"] a, [rel="tag"]');
   console.log('Found manga genres:', genreElements.length);
   
   for (let i = 0; i < genreElements.length; i++) {

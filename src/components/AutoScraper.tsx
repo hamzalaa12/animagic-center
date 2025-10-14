@@ -73,14 +73,21 @@ export const AutoScraper = () => {
             </p>
           </div>
 
-          <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg space-y-2">
+          <div className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg space-y-3">
             <h4 className="font-semibold text-sm text-blue-500">💡 كيف يعمل</h4>
             <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-              <li>النظام يدخل إلى صفحة الأنمي ويسحب جميع البيانات تلقائياً</li>
-              <li>يستخرج العنوان، الوصف، الصور، المواسم، الحلقات، والأنواع</li>
-              <li>يحفظ جميع المعلومات في قاعدة البيانات</li>
-              <li>يدعم معظم مواقع الأنمي الشهيرة</li>
+              <li>أدخل رابط صفحة الأنمي الكاملة (وليس رابط حلقة)</li>
+              <li>سيتم تحليل HTML واستخراج جميع المعلومات</li>
+              <li>يستخرج: العنوان، الوصف، الصور، المواسم، الحلقات، السيرفرات، والتصنيفات</li>
             </ul>
+            
+            <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded">
+              <p className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">⚠️ ملاحظة هامة</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside mr-2">
+                <li>بعض المواقع محمية بـ Cloudflare وقد ترفض السحب</li>
+                <li>إذا فشل السحب، جرب موقع آخر أو أضف المحتوى يدوياً</li>
+              </ul>
+            </div>
           </div>
 
           <Button
