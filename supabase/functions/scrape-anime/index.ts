@@ -7,6 +7,101 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to decode Unicode escape sequences
+function decodeUnicodeEscapes(text: string): string {
+  if (!text) return text;
+  
+  try {
+    // Handle both \uXXXX and &#xXXXX; formats
+    return text
+      .replace(/\\u([\d\w]{4})/gi, (match, grp) => String.fromCharCode(parseInt(grp, 16)))
+      .replace(/&#x([\d\w]+);/gi, (match, grp) => String.fromCharCode(parseInt(grp, 16)))
+      .replace(/&#(\d+);/g, (match, grp) => String.fromCharCode(parseInt(grp, 10)));
+  } catch (e) {
+    return text;
+  }
+}
+
+// Helper function to clean text from unwanted content
+function cleanText(text: string): string {
+  if (!text) return text;
+  
+  // First decode Unicode escapes
+  text = decodeUnicodeEscapes(text);
+  
+  // Remove script tags and their content
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  
+  // Remove style tags and their content
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  
+  // Remove inline JavaScript objects and functions
+  text = text.replace(/var\s+\w+\s*=\s*{[\s\S]*?};/g, '');
+  text = text.replace(/function\s+\w+\s*\([^)]*\)\s*{[\s\S]*?}/g, '');
+  
+  // Remove WordPress-specific content
+  text = text.replace(/wpdiscuz[^}]*}/gi, '');
+  text = text.replace(/wpDiscuz[^}]*}/gi, '');
+  text = text.replace(/wp\.[^;]*;/g, '');
+  text = text.replace(/jQuery[^;]*;/g, '');
+  
+  // Remove HTML comments
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+  
+  // Remove excessive whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  return text;
+}
+
+// Helper function to get image URL from element (supports lazy loading)
+function getImageUrl(element: any, baseUrl: string): string | null {
+  if (!element) return null;
+  
+  const sources = [
+    element.getAttribute('src'),
+    element.getAttribute('data-src'),
+    element.getAttribute('data-lazy-src'),
+    element.getAttribute('data-original'),
+    element.getAttribute('data-srcset')?.split(',')[0]?.split(' ')[0]
+  ];
+  
+  for (const src of sources) {
+    if (src && src.trim()) {
+      let url = src.trim();
+      
+      // Make URL absolute
+      if (url.startsWith('//')) {
+        url = 'https:' + url;
+      } else if (url.startsWith('/')) {
+        const urlObj = new URL(baseUrl);
+        url = `${urlObj.protocol}//${urlObj.host}${url}`;
+      } else if (!url.startsWith('http')) {
+        const urlObj = new URL(baseUrl);
+        url = `${urlObj.protocol}//${urlObj.host}/${url}`;
+      }
+      
+      // Filter out unwanted images
+      const lowercaseUrl = url.toLowerCase();
+      if (!lowercaseUrl.includes('icon') && 
+          !lowercaseUrl.includes('logo') && 
+          !lowercaseUrl.includes('avatar') &&
+          !lowercaseUrl.includes('emoji') &&
+          !lowercaseUrl.includes('1x1') &&
+          !lowercaseUrl.includes('placeholder')) {
+        return url;
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Helper function to add delay between requests
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -26,19 +121,27 @@ serve(async (req) => {
 
     console.log(`Fetching ${type} data from:`, url);
 
-    // Fetch HTML content with improved headers
+    // Add random delay to avoid rate limiting
+    await delay(Math.random() * 1000 + 500);
+
+    // Fetch HTML content with enhanced headers to bypass basic protections
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0'
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+        'DNT': '1',
+        'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"'
       }
     });
     
@@ -47,8 +150,11 @@ serve(async (req) => {
       throw new Error(`فشل في الوصول للصفحة. الموقع قد يكون محمي بـ Cloudflare أو يتطلب متصفح حقيقي. حاول نسخ المحتوى يدوياً.`);
     }
 
-    const html = await response.text();
+    let html = await response.text();
     console.log('Received HTML, length:', html.length);
+    
+    // Clean HTML from unwanted scripts and content
+    html = cleanText(html);
 
     // Parse HTML
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -84,29 +190,29 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   
   // Extract anime data with improved selectors for Arabic anime sites
   const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, .single-title, .page-title, h1');
-  let title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
+  let title = decodeUnicodeEscapes(titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '');
   
   // Clean title from extra text
-  title = title.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|أونلاين/gi, '').trim() || 'Untitled';
+  title = cleanText(title.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|أونلاين|جميع حلقات/gi, '').trim()) || 'Untitled';
   
   // Try to extract Arabic title
   let title_arabic = null;
   const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
   if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    title_arabic = metaArabicTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين/gi, '').trim();
+    title_arabic = cleanText(decodeUnicodeEscapes(metaArabicTitle).replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|جميع حلقات/gi, '').trim());
   }
   
   // Look for Arabic text in title
   const arabicInTitle = title.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
   if (arabicInTitle && arabicInTitle.length > 3) {
-    title_arabic = arabicInTitle;
+    title_arabic = cleanText(arabicInTitle);
   }
   
   // Try alternative selectors for Arabic title
   if (!title_arabic) {
     const arabicTitleEl = doc.querySelector('.arabic-title, [lang="ar"]');
     if (arabicTitleEl) {
-      title_arabic = arabicTitleEl.textContent?.trim();
+      title_arabic = cleanText(decodeUnicodeEscapes(arabicTitleEl.textContent?.trim() || ''));
     }
   }
   
@@ -114,36 +220,27 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   let description = null;
   const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
   if (metaDesc && metaDesc.length > 20) {
-    description = metaDesc.trim().substring(0, 1000);
+    description = cleanText(decodeUnicodeEscapes(metaDesc.trim()));
   } else {
     const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .anime-description, .summary, article > p, .post-content > p');
     if (descElement) {
-      description = descElement.textContent?.trim().substring(0, 1000);
+      description = cleanText(decodeUnicodeEscapes(descElement.textContent?.trim() || ''));
     }
   }
   
-  // Clean description from scripts and styles
-  if (description) {
-    description = description.replace(/<script[^>]*>.*?<\/script>/gi, '').replace(/<style[^>]*>.*?<\/style>/gi, '').trim();
+  // Final description cleanup and length limit
+  if (description && description.length > 20) {
+    description = description.substring(0, 1000);
+  } else {
+    description = null;
   }
   
-  // Extract images with better selectors
+  // Extract images with enhanced support for lazy loading
   const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .anime-image img, .series-image img, article img:first-of-type, .post-thumbnail img, img[class*="cover"], img[class*="poster"]');
-  let cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src') || coverImg?.getAttribute('data-lazy-src');
-  
-  // Make sure image URL is absolute
-  if (cover_image && cover_image.startsWith('/')) {
-    const urlObj = new URL(url);
-    cover_image = `${urlObj.protocol}//${urlObj.host}${cover_image}`;
-  }
+  const cover_image = getImageUrl(coverImg, url);
   
   const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img, .backdrop img');
-  let banner_image = bannerImg?.getAttribute('src') || bannerImg?.getAttribute('data-src') || cover_image;
-  
-  if (banner_image && banner_image.startsWith('/')) {
-    const urlObj = new URL(url);
-    banner_image = `${urlObj.protocol}//${urlObj.host}${banner_image}`;
-  }
+  const banner_image = getImageUrl(bannerImg, url) || cover_image;
   
   // Extract type (tv, movie, ova)
   const typeElement = doc.querySelector('.type, .anime-type, [class*="type"]');
@@ -231,9 +328,9 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
       console.log(`Season ${i + 1} - Found episodes:`, episodeElements.length);
       
       for (let j = 0; j < episodeElements.length; j++) {
-        const episodeEl = episodeElements[j];
-        const episodeTitle = episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`;
-        const episodeThumbnail = episodeEl.querySelector('img')?.getAttribute('src') || episodeEl.querySelector('img')?.getAttribute('data-src');
+      const episodeEl = episodeElements[j];
+        const episodeTitle = cleanText(decodeUnicodeEscapes(episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`));
+        const episodeThumbnail = getImageUrl(episodeEl.querySelector('img'), url);
         
         const episodeData = {
           season_id: insertedSeason.id,
@@ -260,13 +357,16 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
         
         for (let k = 0; k < serverLinks.length; k++) {
           const serverLink = serverLinks[k];
-          const serverName = serverLink.textContent?.trim() || serverLink.getAttribute('title') || serverLink.getAttribute('data-server') || `السيرفر ${k + 1}`;
+          const serverName = cleanText(decodeUnicodeEscapes(serverLink.textContent?.trim() || serverLink.getAttribute('title') || serverLink.getAttribute('data-server') || `السيرفر ${k + 1}`));
           let videoUrl = serverLink.getAttribute('href') || serverLink.getAttribute('data-url') || '';
           
           // Make URL absolute if needed
           if (videoUrl && videoUrl.startsWith('/')) {
             const urlObj = new URL(url);
             videoUrl = `${urlObj.protocol}//${urlObj.host}${videoUrl}`;
+          } else if (videoUrl && !videoUrl.startsWith('http')) {
+            const urlObj = new URL(url);
+            videoUrl = `${urlObj.protocol}//${urlObj.host}/${videoUrl}`;
           }
           
           if (videoUrl && videoUrl.length > 10) {
@@ -304,8 +404,8 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
       
       for (let j = 0; j < episodeElements.length; j++) {
         const episodeEl = episodeElements[j];
-        const episodeTitle = episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`;
-        const episodeThumbnail = episodeEl.querySelector('img')?.getAttribute('src') || episodeEl.querySelector('img')?.getAttribute('data-src');
+        const episodeTitle = cleanText(decodeUnicodeEscapes(episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`));
+        const episodeThumbnail = getImageUrl(episodeEl.querySelector('img'), url);
         
         const episodeData = {
           season_id: defaultSeason.id,
@@ -398,57 +498,49 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   
   // Extract manga data with improved selectors for Arabic manga sites
   const titleElement = doc.querySelector('h1.entry-title, h1.post-title, h1.title, .manga-title, .post-title-content, .single-title, h1');
-  let title = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
+  let title = decodeUnicodeEscapes(titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '');
   
   // Clean title from extra text
-  title = title.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين|قراءة/gi, '').trim() || 'Untitled';
+  title = cleanText(title.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين|قراءة/gi, '').trim()) || 'Untitled';
   
   // Try to extract Arabic title
   let title_arabic = null;
   const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
   if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    title_arabic = metaArabicTitle.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين/gi, '').trim();
+    title_arabic = cleanText(decodeUnicodeEscapes(metaArabicTitle).replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين/gi, '').trim());
   }
   
   // Look for Arabic text in title
   const arabicInTitle = title.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
   if (arabicInTitle && arabicInTitle.length > 3) {
-    title_arabic = arabicInTitle;
+    title_arabic = cleanText(arabicInTitle);
   }
   
   // Extract description
   let description = null;
   const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
   if (metaDesc && metaDesc.length > 20) {
-    description = metaDesc.trim().substring(0, 1000);
+    description = cleanText(decodeUnicodeEscapes(metaDesc.trim()));
   } else {
     const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .summary, .manga-description, .manga-excerpt, article > p, .post-content > p, .summary__content');
     if (descElement) {
-      description = descElement.textContent?.trim().substring(0, 1000);
+      description = cleanText(decodeUnicodeEscapes(descElement.textContent?.trim() || ''));
     }
   }
   
-  // Clean description
-  if (description) {
-    description = description.replace(/<script[^>]*>.*?<\/script>/gi, '').replace(/<style[^>]*>.*?<\/style>/gi, '').trim();
+  // Final description cleanup
+  if (description && description.length > 20) {
+    description = description.substring(0, 1000);
+  } else {
+    description = null;
   }
   
-  // Extract images
+  // Extract images with enhanced lazy loading support
   const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .summary_image img, .manga-image img, .series-thumbnail img, article img:first-of-type, img[class*="cover"]');
-  let cover_image = coverImg?.getAttribute('src') || coverImg?.getAttribute('data-src') || coverImg?.getAttribute('data-lazy-src');
-  
-  if (cover_image && cover_image.startsWith('/')) {
-    const urlObj = new URL(url);
-    cover_image = `${urlObj.protocol}//${urlObj.host}${cover_image}`;
-  }
+  const cover_image = getImageUrl(coverImg, url);
   
   const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img, .backdrop img');
-  let banner_image = bannerImg?.getAttribute('src') || bannerImg?.getAttribute('data-src') || cover_image;
-  
-  if (banner_image && banner_image.startsWith('/')) {
-    const urlObj = new URL(url);
-    banner_image = `${urlObj.protocol}//${urlObj.host}${banner_image}`;
-  }
+  const banner_image = getImageUrl(bannerImg, url) || cover_image;
   
   // Extract type (manga, manhwa, manhua)
   const typeElement = doc.querySelector('.type, .manga-type, [class*="type"]');
@@ -478,10 +570,10 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   
   // Extract author and artist
   const authorElement = doc.querySelector('.author, .writer, [class*="author"]');
-  const author = authorElement?.textContent?.trim()?.replace(/author:?/i, '').trim();
+  const author = cleanText(decodeUnicodeEscapes(authorElement?.textContent?.trim()?.replace(/author:?/i, '').trim() || '')) || null;
   
   const artistElement = doc.querySelector('.artist, .illustrator, [class*="artist"]');
-  const artist = artistElement?.textContent?.trim()?.replace(/artist:?/i, '').trim();
+  const artist = cleanText(decodeUnicodeEscapes(artistElement?.textContent?.trim()?.replace(/artist:?/i, '').trim() || '')) || null;
   
   console.log('Extracted manga data:', { title, title_arabic, type, status, release_year, rating, author, artist });
   
@@ -513,23 +605,40 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
 
   console.log('Manga inserted:', insertedManga.id);
 
-  // Extract chapters with better selectors
+  // Extract chapters with better selectors and deduplication
   const chapterElements = doc.querySelectorAll('.chapter, .chapter-item, .wp-manga-chapter, .chapters-list > li, .chapter-link, a[href*="chapter"], a[href*="الفصل"], [class*="chapter-"], li.wp-manga-chapter');
   console.log('Found chapters:', chapterElements.length);
+  
+  // Track processed chapters to avoid duplicates
+  const processedChapters = new Set<string>();
   
   for (let i = 0; i < chapterElements.length; i++) {
     const chapterEl = chapterElements[i];
     const chapterLink = chapterEl.querySelector('a') || (chapterEl.tagName === 'A' ? chapterEl : null);
-    const chapterTitle = chapterLink?.textContent?.trim() || chapterEl.textContent?.trim() || `الفصل ${i + 1}`;
+    let chapterTitle = cleanText(decodeUnicodeEscapes(chapterLink?.textContent?.trim() || chapterEl.textContent?.trim() || `الفصل ${i + 1}`));
     
     // Extract chapter number from title if possible
     const chapterNumMatch = chapterTitle.match(/chapter\s*(\d+(?:\.\d+)?)/i) || chapterTitle.match(/الفصل\s*(\d+(?:\.\d+)?)/);
     const chapter_number = chapterNumMatch ? parseFloat(chapterNumMatch[1]) : i + 1;
     
-    const chapterThumbnail = chapterEl.querySelector('img')?.getAttribute('src') || chapterEl.querySelector('img')?.getAttribute('data-src');
+    // Create unique identifier for chapter
+    const chapterIdentifier = `${chapter_number}`;
+    
+    // Skip if already processed
+    if (processedChapters.has(chapterIdentifier)) {
+      console.log(`Skipping duplicate chapter: ${chapter_number}`);
+      continue;
+    }
+    processedChapters.add(chapterIdentifier);
+    
+    const chapterThumbnail = getImageUrl(chapterEl.querySelector('img'), url);
     
     // Get chapter URL for potential page extraction
-    const chapterUrl = chapterLink?.getAttribute('href');
+    let chapterUrl = chapterLink?.getAttribute('href');
+    if (chapterUrl && chapterUrl.startsWith('/')) {
+      const urlObj = new URL(url);
+      chapterUrl = `${urlObj.protocol}//${urlObj.host}${chapterUrl}`;
+    }
     
     const chapterData = {
       manga_id: insertedManga.id,
@@ -557,19 +666,27 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
     if (pageElements.length === 0 && chapterUrl) {
       try {
         console.log(`Fetching chapter page: ${chapterUrl}`);
+        
+        // Add delay to avoid rate limiting
+        await delay(Math.random() * 1000 + 1000);
+        
         const chapterResponse = await fetch(chapterUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': url,
+            'DNT': '1'
           }
         });
         
         if (chapterResponse.ok) {
-          const chapterHtml = await chapterResponse.text();
+          let chapterHtml = await chapterResponse.text();
+          chapterHtml = cleanText(chapterHtml);
           const chapterDoc = new DOMParser().parseFromString(chapterHtml, 'text/html');
           
           if (chapterDoc) {
-            pageElements = chapterDoc.querySelectorAll('img.page, .page img, .reading-content img, .chapter-content img, .page-break img, #readerarea img, .reader-area img');
+            pageElements = chapterDoc.querySelectorAll('img.page, .page img, .reading-content img, .chapter-content img, .page-break img, #readerarea img, .reader-area img, .entry-content img, .wp-manga-chapter-img');
           }
         }
       } catch (e) {
@@ -579,25 +696,28 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
     
     console.log(`Chapter ${chapter_number} - Found pages:`, pageElements.length);
     
+    // Collect all valid page images first to avoid duplicates
+    const pageImages: Array<{url: string, number: number}> = [];
+    const seenUrls = new Set<string>();
+    
     for (let j = 0; j < pageElements.length; j++) {
-      let pageImg = pageElements[j].getAttribute('src') || pageElements[j].getAttribute('data-src') || pageElements[j].getAttribute('data-lazy-src');
+      const pageImg = getImageUrl(pageElements[j], chapterUrl || url);
       
-      if (pageImg) {
-        // Make URL absolute
-        if (pageImg.startsWith('/')) {
-          const urlObj = new URL(url);
-          pageImg = `${urlObj.protocol}//${urlObj.host}${pageImg}`;
-        }
-        
-        // Filter out icons, logos, and very small images
-        if (pageImg && !pageImg.includes('icon') && !pageImg.includes('logo') && !pageImg.includes('avatar')) {
-          await supabaseClient.from('manga_pages').insert([{
-            chapter_id: insertedChapter.id,
-            page_number: j + 1,
-            image_url: pageImg
-          }]);
-        }
+      if (pageImg && !seenUrls.has(pageImg)) {
+        seenUrls.add(pageImg);
+        pageImages.push({ url: pageImg, number: j + 1 });
       }
+    }
+    
+    // Insert all pages for this chapter
+    console.log(`Inserting ${pageImages.length} unique pages for chapter ${chapter_number}`);
+    
+    for (const page of pageImages) {
+      await supabaseClient.from('manga_pages').insert([{
+        chapter_id: insertedChapter.id,
+        page_number: page.number,
+        image_url: page.url
+      }]);
     }
   }
 

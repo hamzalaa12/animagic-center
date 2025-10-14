@@ -76,16 +76,28 @@ export const MangaScraper = () => {
             <h4 className="font-semibold text-sm text-purple-500">💡 كيف يعمل</h4>
             <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
               <li>أدخل رابط صفحة المانجا الكاملة (وليس رابط فصل)</li>
-              <li>سيتم تحليل HTML واستخراج جميع البيانات</li>
+              <li>سيتم تحليل HTML واستخراج جميع البيانات تلقائياً</li>
               <li>يستخرج: العنوان، الوصف، الصور، الفصول، الصفحات، المؤلف، والتصنيفات</li>
               <li>سيحاول جلب صور الفصول من صفحاتها تلقائياً</li>
+              <li>يجمع جميع صور الفصل الواحد معاً (لا تكرار)</li>
             </ul>
+            
+            <div className="mt-3 p-3 bg-green-500/10 border border-green-500/20 rounded">
+              <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-1">✨ التحسينات الجديدة</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside mr-2">
+                <li>إزالة الفصول المكررة - كل فصل مرة واحدة فقط</li>
+                <li>فك تشفير Unicode للنصوص العربية تلقائياً</li>
+                <li>دعم كامل للصور الكسولة (data-src, data-lazy)</li>
+                <li>تصفية ذكية للمحتوى وإزالة السكريبتات</li>
+                <li>تأخير عشوائي بين الطلبات لتجنب الحظر</li>
+              </ul>
+            </div>
             
             <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded">
               <p className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">⚠️ ملاحظة هامة</p>
               <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside mr-2">
-                <li>بعض المواقع محمية بـ Cloudflare وقد ترفض السحب</li>
-                <li>استخراج صفحات الفصول قد يستغرق وقتاً</li>
+                <li>المواقع المحمية بـ Cloudflare قد ترفض السحب</li>
+                <li>استخراج صفحات الفصول قد يستغرق وقتاً (بسبب التأخير)</li>
                 <li>إذا فشل السحب، جرب موقع آخر</li>
               </ul>
             </div>

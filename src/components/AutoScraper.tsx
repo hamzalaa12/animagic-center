@@ -77,15 +77,28 @@ export const AutoScraper = () => {
             <h4 className="font-semibold text-sm text-blue-500">💡 كيف يعمل</h4>
             <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
               <li>أدخل رابط صفحة الأنمي الكاملة (وليس رابط حلقة)</li>
-              <li>سيتم تحليل HTML واستخراج جميع المعلومات</li>
+              <li>سيتم تحليل HTML واستخراج جميع المعلومات تلقائياً</li>
               <li>يستخرج: العنوان، الوصف، الصور، المواسم، الحلقات، السيرفرات، والتصنيفات</li>
+              <li>يدعم الصور المحملة بالـ lazy loading (data-src)</li>
+              <li>يفك تشفير النصوص العربية تلقائياً</li>
             </ul>
+            
+            <div className="mt-3 p-3 bg-green-500/10 border border-green-500/20 rounded">
+              <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-1">✨ التحسينات الجديدة</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside mr-2">
+                <li>تصفية ذكية للمحتوى - إزالة السكريبتات والأكواد غير المفيدة</li>
+                <li>فك تشفير Unicode (\\u0625\\u0644\\u0649) تلقائياً</li>
+                <li>دعم كامل للصور الكسولة (data-src, data-lazy, data-original)</li>
+                <li>headers محسّنة لتجاوز بعض الحمايات الأساسية</li>
+              </ul>
+            </div>
             
             <div className="mt-3 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded">
               <p className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">⚠️ ملاحظة هامة</p>
               <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside mr-2">
-                <li>بعض المواقع محمية بـ Cloudflare وقد ترفض السحب</li>
+                <li>المواقع المحمية بـ Cloudflare قد ترفض السحب</li>
                 <li>إذا فشل السحب، جرب موقع آخر أو أضف المحتوى يدوياً</li>
+                <li>النظام يضيف تأخير عشوائي بين الطلبات لتجنب الحظر</li>
               </ul>
             </div>
           </div>
