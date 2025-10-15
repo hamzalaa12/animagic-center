@@ -150,13 +150,10 @@ serve(async (req) => {
       throw new Error(`فشل في الوصول للصفحة. الموقع قد يكون محمي بـ Cloudflare أو يتطلب متصفح حقيقي. حاول نسخ المحتوى يدوياً.`);
     }
 
-    let html = await response.text();
+    const html = await response.text();
     console.log('Received HTML, length:', html.length);
-    
-    // Clean HTML from unwanted scripts and content
-    html = cleanText(html);
 
-    // Parse HTML
+    // Parse HTML (do NOT clean it before parsing - we need the structure)
     const doc = new DOMParser().parseFromString(html, 'text/html');
     if (!doc) {
       throw new Error('Failed to parse HTML');
@@ -189,30 +186,32 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   console.log('Starting anime scrape from URL:', url);
   
   // Extract anime data with improved selectors for Arabic anime sites
-  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, .single-title, .page-title, h1');
-  let title = decodeUnicodeEscapes(titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '');
+  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, .single-title, .page-title, article h1, h1');
+  let rawTitle = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
   
-  // Clean title from extra text
-  title = cleanText(title.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|أونلاين|جميع حلقات/gi, '').trim()) || 'Untitled';
+  // Decode and clean title
+  rawTitle = decodeUnicodeEscapes(rawTitle);
+  let title = rawTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|أونلاين|جميع حلقات/gi, '').trim() || rawTitle || 'Untitled';
   
   // Try to extract Arabic title
   let title_arabic = null;
   const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
   if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    title_arabic = cleanText(decodeUnicodeEscapes(metaArabicTitle).replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|جميع حلقات/gi, '').trim());
+    const decodedMetaTitle = decodeUnicodeEscapes(metaArabicTitle);
+    title_arabic = decodedMetaTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|جميع حلقات/gi, '').trim();
   }
   
   // Look for Arabic text in title
-  const arabicInTitle = title.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
-  if (arabicInTitle && arabicInTitle.length > 3) {
-    title_arabic = cleanText(arabicInTitle);
+  const arabicInTitle = rawTitle.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
+  if (!title_arabic && arabicInTitle && arabicInTitle.length > 3) {
+    title_arabic = arabicInTitle;
   }
   
   // Try alternative selectors for Arabic title
   if (!title_arabic) {
     const arabicTitleEl = doc.querySelector('.arabic-title, [lang="ar"]');
     if (arabicTitleEl) {
-      title_arabic = cleanText(decodeUnicodeEscapes(arabicTitleEl.textContent?.trim() || ''));
+      title_arabic = decodeUnicodeEscapes(arabicTitleEl.textContent?.trim() || '');
     }
   }
   
@@ -220,17 +219,19 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   let description = null;
   const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
   if (metaDesc && metaDesc.length > 20) {
-    description = cleanText(decodeUnicodeEscapes(metaDesc.trim()));
+    description = decodeUnicodeEscapes(metaDesc.trim());
   } else {
-    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .anime-description, .summary, article > p, .post-content > p');
+    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .anime-description, .summary, article > p, .post-content > p, .ssynopsis');
     if (descElement) {
-      description = cleanText(decodeUnicodeEscapes(descElement.textContent?.trim() || ''));
+      let rawDesc = descElement.textContent?.trim() || '';
+      description = decodeUnicodeEscapes(rawDesc);
     }
   }
   
   // Final description cleanup and length limit
   if (description && description.length > 20) {
-    description = description.substring(0, 1000);
+    // Remove excessive whitespace
+    description = description.replace(/\s+/g, ' ').trim().substring(0, 1000);
   } else {
     description = null;
   }
@@ -329,7 +330,8 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
       
       for (let j = 0; j < episodeElements.length; j++) {
       const episodeEl = episodeElements[j];
-        const episodeTitle = cleanText(decodeUnicodeEscapes(episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`));
+      let episodeTitle = episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`;
+      episodeTitle = decodeUnicodeEscapes(episodeTitle);
         const episodeThumbnail = getImageUrl(episodeEl.querySelector('img'), url);
         
         const episodeData = {
@@ -357,7 +359,8 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
         
         for (let k = 0; k < serverLinks.length; k++) {
           const serverLink = serverLinks[k];
-          const serverName = cleanText(decodeUnicodeEscapes(serverLink.textContent?.trim() || serverLink.getAttribute('title') || serverLink.getAttribute('data-server') || `السيرفر ${k + 1}`));
+          let serverName = serverLink.textContent?.trim() || serverLink.getAttribute('title') || serverLink.getAttribute('data-server') || `السيرفر ${k + 1}`;
+          serverName = decodeUnicodeEscapes(serverName);
           let videoUrl = serverLink.getAttribute('href') || serverLink.getAttribute('data-url') || '';
           
           // Make URL absolute if needed
@@ -404,7 +407,8 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
       
       for (let j = 0; j < episodeElements.length; j++) {
         const episodeEl = episodeElements[j];
-        const episodeTitle = cleanText(decodeUnicodeEscapes(episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`));
+        let episodeTitle = episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`;
+        episodeTitle = decodeUnicodeEscapes(episodeTitle);
         const episodeThumbnail = getImageUrl(episodeEl.querySelector('img'), url);
         
         const episodeData = {
@@ -497,40 +501,44 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   console.log('Starting manga scrape from URL:', url);
   
   // Extract manga data with improved selectors for Arabic manga sites
-  const titleElement = doc.querySelector('h1.entry-title, h1.post-title, h1.title, .manga-title, .post-title-content, .single-title, h1');
-  let title = decodeUnicodeEscapes(titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '');
+  const titleElement = doc.querySelector('h1.entry-title, h1.post-title, h1.title, .manga-title, .post-title-content, .single-title, article h1, h1');
+  let rawTitle = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
   
-  // Clean title from extra text
-  title = cleanText(title.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين|قراءة/gi, '').trim()) || 'Untitled';
+  // Decode and clean title
+  rawTitle = decodeUnicodeEscapes(rawTitle);
+  let title = rawTitle.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين|قراءة/gi, '').trim() || rawTitle || 'Untitled';
   
   // Try to extract Arabic title
   let title_arabic = null;
   const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
   if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    title_arabic = cleanText(decodeUnicodeEscapes(metaArabicTitle).replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين/gi, '').trim());
+    const decodedMetaTitle = decodeUnicodeEscapes(metaArabicTitle);
+    title_arabic = decodedMetaTitle.replace(/مانجا|مانهوا|مانها|manga|manhwa|manhua|مترجم|اون لاين/gi, '').trim();
   }
   
   // Look for Arabic text in title
-  const arabicInTitle = title.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
-  if (arabicInTitle && arabicInTitle.length > 3) {
-    title_arabic = cleanText(arabicInTitle);
+  const arabicInTitle = rawTitle.match(/[\u0600-\u06FF\s،؛]+/)?.[0]?.trim();
+  if (!title_arabic && arabicInTitle && arabicInTitle.length > 3) {
+    title_arabic = arabicInTitle;
   }
   
   // Extract description
   let description = null;
   const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
   if (metaDesc && metaDesc.length > 20) {
-    description = cleanText(decodeUnicodeEscapes(metaDesc.trim()));
+    description = decodeUnicodeEscapes(metaDesc.trim());
   } else {
-    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .summary, .manga-description, .manga-excerpt, article > p, .post-content > p, .summary__content');
+    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .summary, .manga-description, .manga-excerpt, article > p, .post-content > p, .summary__content, .dsct');
     if (descElement) {
-      description = cleanText(decodeUnicodeEscapes(descElement.textContent?.trim() || ''));
+      let rawDesc = descElement.textContent?.trim() || '';
+      description = decodeUnicodeEscapes(rawDesc);
     }
   }
   
   // Final description cleanup
   if (description && description.length > 20) {
-    description = description.substring(0, 1000);
+    // Remove excessive whitespace
+    description = description.replace(/\s+/g, ' ').trim().substring(0, 1000);
   } else {
     description = null;
   }
@@ -570,10 +578,12 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   
   // Extract author and artist
   const authorElement = doc.querySelector('.author, .writer, [class*="author"]');
-  const author = cleanText(decodeUnicodeEscapes(authorElement?.textContent?.trim()?.replace(/author:?/i, '').trim() || '')) || null;
+  let author = authorElement?.textContent?.trim()?.replace(/author:?/i, '').trim() || null;
+  if (author) author = decodeUnicodeEscapes(author);
   
   const artistElement = doc.querySelector('.artist, .illustrator, [class*="artist"]');
-  const artist = cleanText(decodeUnicodeEscapes(artistElement?.textContent?.trim()?.replace(/artist:?/i, '').trim() || '')) || null;
+  let artist = artistElement?.textContent?.trim()?.replace(/artist:?/i, '').trim() || null;
+  if (artist) artist = decodeUnicodeEscapes(artist);
   
   console.log('Extracted manga data:', { title, title_arabic, type, status, release_year, rating, author, artist });
   
@@ -615,7 +625,8 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
   for (let i = 0; i < chapterElements.length; i++) {
     const chapterEl = chapterElements[i];
     const chapterLink = chapterEl.querySelector('a') || (chapterEl.tagName === 'A' ? chapterEl : null);
-    let chapterTitle = cleanText(decodeUnicodeEscapes(chapterLink?.textContent?.trim() || chapterEl.textContent?.trim() || `الفصل ${i + 1}`));
+    let chapterTitle = chapterLink?.textContent?.trim() || chapterEl.textContent?.trim() || `الفصل ${i + 1}`;
+    chapterTitle = decodeUnicodeEscapes(chapterTitle);
     
     // Extract chapter number from title if possible
     const chapterNumMatch = chapterTitle.match(/chapter\s*(\d+(?:\.\d+)?)/i) || chapterTitle.match(/الفصل\s*(\d+(?:\.\d+)?)/);
@@ -681,8 +692,7 @@ async function scrapeManga(doc: any, url: string, supabaseClient: any) {
         });
         
         if (chapterResponse.ok) {
-          let chapterHtml = await chapterResponse.text();
-          chapterHtml = cleanText(chapterHtml);
+          const chapterHtml = await chapterResponse.text();
           const chapterDoc = new DOMParser().parseFromString(chapterHtml, 'text/html');
           
           if (chapterDoc) {
