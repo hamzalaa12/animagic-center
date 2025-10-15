@@ -16,6 +16,10 @@ import { ContentManager } from "@/components/ContentManager";
 import { AutoScraper } from "@/components/AutoScraper";
 import { MangaScraper } from "@/components/MangaScraper";
 import { SourcesManager } from "@/components/SourcesManager";
+import { ManualMangaForm } from "@/components/ManualMangaForm";
+import { ManualChapterForm } from "@/components/ManualChapterForm";
+import { ManualEpisodeForm } from "@/components/ManualEpisodeForm";
+import { GenreManager } from "@/components/GenreManager";
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -130,8 +134,12 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="add-anime" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-9">
             <TabsTrigger value="add-anime">إضافة أنمي</TabsTrigger>
+            <TabsTrigger value="add-episode">إضافة حلقة</TabsTrigger>
+            <TabsTrigger value="add-manga">إضافة مانجا</TabsTrigger>
+            <TabsTrigger value="add-chapter">إضافة فصل</TabsTrigger>
+            <TabsTrigger value="genres">التصنيفات</TabsTrigger>
             <TabsTrigger value="manage">إدارة المحتوى</TabsTrigger>
             <TabsTrigger value="scraper">سحب أنمي</TabsTrigger>
             <TabsTrigger value="manga-scraper">سحب مانجا</TabsTrigger>
@@ -278,6 +286,22 @@ const Admin = () => {
                 </form>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="add-episode">
+            <ManualEpisodeForm />
+          </TabsContent>
+
+          <TabsContent value="add-manga">
+            <ManualMangaForm />
+          </TabsContent>
+
+          <TabsContent value="add-chapter">
+            <ManualChapterForm />
+          </TabsContent>
+
+          <TabsContent value="genres">
+            <GenreManager />
           </TabsContent>
 
           <TabsContent value="manage">
