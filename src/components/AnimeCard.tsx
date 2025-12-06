@@ -11,6 +11,7 @@ interface AnimeCardProps {
   rating?: number;
   type?: string;
   status?: string;
+  linkPrefix?: string;
 }
 
 export const AnimeCard = ({
@@ -20,10 +21,11 @@ export const AnimeCard = ({
   coverImage,
   rating,
   type,
-  status
+  status,
+  linkPrefix = '/anime'
 }: AnimeCardProps) => {
   return (
-    <Link to={`/anime/${id}`}>
+    <Link to={`${linkPrefix}/${id}`}>
       <Card className="anime-card-hover overflow-hidden glass-effect group">
         <div className="relative aspect-[2/3]">
           <img
@@ -51,7 +53,7 @@ export const AnimeCard = ({
           <h3 className="font-bold text-lg mb-1 line-clamp-1">{titleArabic || title}</h3>
           {type && (
             <Badge variant="outline" className="text-xs">
-              {type === 'tv' ? 'مسلسل' : type === 'movie' ? 'فيلم' : type}
+              {type === 'tv' ? 'مسلسل' : type === 'movie' ? 'فيلم' : type === 'manga' ? 'مانجا' : type === 'manhwa' ? 'مانهوا' : type}
             </Badge>
           )}
         </div>
