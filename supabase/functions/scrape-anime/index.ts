@@ -185,20 +185,60 @@ serve(async (req) => {
 async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
   console.log('Starting anime scrape from URL:', url);
   
-  // Extract anime data with improved selectors for Arabic anime sites
-  const titleElement = doc.querySelector('h1.entry-title, h1.title, .anime-title, .post-title, .single-title, .page-title, article h1, h1');
-  let rawTitle = titleElement?.textContent?.trim().replace(/\s+/g, ' ') || '';
+  // Detect site type for specific selectors
+  const isAnimerco = url.includes('animerco.org') || url.includes('animerco.com');
+  const isWitAnime = url.includes('witanime');
+  const isAnime4up = url.includes('anime4up') || url.includes('witanime');
+  
+  console.log('Site detection:', { isAnimerco, isWitAnime, isAnime4up });
+  
+  // Enhanced title selectors for Arabic anime sites
+  const titleSelectors = [
+    // AnimerCO specific
+    '.media-title h1',
+    '.head-box h1',
+    // WitAnime specific
+    '.anime-details-title',
+    'h1.anime-details-title',
+    // General
+    'h1.entry-title',
+    'h1.title',
+    '.anime-title',
+    '.post-title',
+    '.single-title',
+    '.page-title',
+    'article h1',
+    'h1'
+  ];
+  
+  let rawTitle = '';
+  for (const selector of titleSelectors) {
+    const el = doc.querySelector(selector);
+    if (el?.textContent?.trim()) {
+      rawTitle = el.textContent.trim().replace(/\s+/g, ' ');
+      console.log(`Found title with selector "${selector}":`, rawTitle);
+      break;
+    }
+  }
   
   // Decode and clean title
   rawTitle = decodeUnicodeEscapes(rawTitle);
   let title = rawTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|أونلاين|جميع حلقات/gi, '').trim() || rawTitle || 'Untitled';
   
-  // Try to extract Arabic title
+  // Try to extract Arabic/alternative title - AnimerCO has h3 under media-title
   let title_arabic = null;
-  const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
-  if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
-    const decodedMetaTitle = decodeUnicodeEscapes(metaArabicTitle);
-    title_arabic = decodedMetaTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|جميع حلقات/gi, '').trim();
+  const altTitleEl = doc.querySelector('.media-title h3, .anime-english-title, .anime-name-alter');
+  if (altTitleEl) {
+    title_arabic = decodeUnicodeEscapes(altTitleEl.textContent?.trim() || '');
+  }
+  
+  // Try meta title
+  if (!title_arabic) {
+    const metaArabicTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
+    if (metaArabicTitle && /[\u0600-\u06FF]/.test(metaArabicTitle)) {
+      const decodedMetaTitle = decodeUnicodeEscapes(metaArabicTitle);
+      title_arabic = decodedMetaTitle.replace(/مشاهدة|تحميل|أنمي|anime|مترجم|اون لاين|جميع حلقات/gi, '').trim();
+    }
   }
   
   // Look for Arabic text in title
@@ -207,69 +247,194 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
     title_arabic = arabicInTitle;
   }
   
-  // Try alternative selectors for Arabic title
-  if (!title_arabic) {
-    const arabicTitleEl = doc.querySelector('.arabic-title, [lang="ar"]');
-    if (arabicTitleEl) {
-      title_arabic = decodeUnicodeEscapes(arabicTitleEl.textContent?.trim() || '');
-    }
-  }
+  // Enhanced description selectors
+  const descSelectors = [
+    // AnimerCO specific
+    '.media-story .content p',
+    '.media-box .content p',
+    // WitAnime specific
+    '.anime-story',
+    'p.anime-story',
+    // General
+    '.story-content',
+    '.entry-content > p',
+    '.description',
+    '.synopsis',
+    '.anime-description',
+    '.summary',
+    'article > p',
+    '.post-content > p'
+  ];
   
-  // Extract description
   let description = null;
-  const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
-  if (metaDesc && metaDesc.length > 20) {
-    description = decodeUnicodeEscapes(metaDesc.trim());
-  } else {
-    const descElement = doc.querySelector('.story-content, .entry-content > p, .description, .synopsis, .anime-description, .summary, article > p, .post-content > p, .ssynopsis');
-    if (descElement) {
-      let rawDesc = descElement.textContent?.trim() || '';
-      description = decodeUnicodeEscapes(rawDesc);
+  for (const selector of descSelectors) {
+    const el = doc.querySelector(selector);
+    if (el?.textContent?.trim() && el.textContent.trim().length > 20) {
+      description = decodeUnicodeEscapes(el.textContent.trim());
+      console.log(`Found description with selector "${selector}"`);
+      break;
     }
   }
   
-  // Final description cleanup and length limit
+  // Try meta description as fallback
+  if (!description || description.length < 20) {
+    const metaDesc = doc.querySelector('meta[name="description"], meta[property="og:description"]')?.getAttribute('content');
+    if (metaDesc && metaDesc.length > 20) {
+      description = decodeUnicodeEscapes(metaDesc.trim());
+    }
+  }
+  
+  // Final description cleanup
   if (description && description.length > 20) {
-    // Remove excessive whitespace
     description = description.replace(/\s+/g, ' ').trim().substring(0, 1000);
   } else {
     description = null;
   }
   
-  // Extract images with enhanced support for lazy loading
-  const coverImg = doc.querySelector('.poster img, .cover-image img, .thumbnail img, .anime-image img, .series-image img, article img:first-of-type, .post-thumbnail img, img[class*="cover"], img[class*="poster"]');
-  const cover_image = getImageUrl(coverImg, url);
+  // Enhanced cover image selectors
+  const coverSelectors = [
+    // AnimerCO specific - uses data-src for lazy loading
+    '.anime-card .image',
+    '.widget-sidebar .anime-card .image',
+    // WitAnime specific
+    '.anime-poster img',
+    '.img-responsive',
+    // General
+    '.poster img',
+    '.cover-image img',
+    '.thumbnail img',
+    '.anime-image img',
+    '.series-image img',
+    'article img:first-of-type',
+    '.post-thumbnail img',
+    'img[class*="cover"]',
+    'img[class*="poster"]'
+  ];
   
-  const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img, .backdrop img');
-  const banner_image = getImageUrl(bannerImg, url) || cover_image;
+  let cover_image = null;
+  for (const selector of coverSelectors) {
+    const el = doc.querySelector(selector);
+    if (el) {
+      // AnimerCO uses data-src on div elements
+      const dataSrc = el.getAttribute('data-src');
+      if (dataSrc) {
+        cover_image = dataSrc.startsWith('http') ? dataSrc : `https:${dataSrc.startsWith('//') ? dataSrc : '//' + dataSrc}`;
+        console.log(`Found cover from data-src: ${cover_image}`);
+        break;
+      }
+      // Try regular image URL
+      const imgUrl = getImageUrl(el, url);
+      if (imgUrl) {
+        cover_image = imgUrl;
+        console.log(`Found cover with selector "${selector}": ${cover_image}`);
+        break;
+      }
+    }
+  }
   
-  // Extract type (tv, movie, ova)
-  const typeElement = doc.querySelector('.type, .anime-type, [class*="type"]');
-  const typeText = typeElement?.textContent?.trim()?.toLowerCase();
+  // Banner image - AnimerCO has banner class with data-src
+  const bannerEl = doc.querySelector('.banner, .head-box .banner');
+  let banner_image = null;
+  if (bannerEl) {
+    const bannerDataSrc = bannerEl.getAttribute('data-src');
+    if (bannerDataSrc) {
+      banner_image = bannerDataSrc.startsWith('http') ? bannerDataSrc : `https:${bannerDataSrc}`;
+    }
+  }
+  if (!banner_image) {
+    const bannerImg = doc.querySelector('.banner img, .header-image img, .featured-image img, .backdrop img');
+    banner_image = getImageUrl(bannerImg, url) || cover_image;
+  }
+  
+  // Extract type from media-info list (AnimerCO) or anime-info (WitAnime)
+  const typeSelectors = [
+    '.media-info li:contains("النوع") span',
+    '.anime-info:contains("النوع")',
+    '.type',
+    '.anime-type',
+    '[class*="type"]'
+  ];
   let type = 'tv';
-  if (typeText?.includes('movie') || typeText?.includes('فيلم')) type = 'movie';
-  else if (typeText?.includes('ova')) type = 'ova';
+  for (const selector of typeSelectors) {
+    const el = doc.querySelector(selector);
+    const typeText = el?.textContent?.trim()?.toLowerCase();
+    if (typeText) {
+      if (typeText.includes('movie') || typeText.includes('فيلم')) {
+        type = 'movie';
+        break;
+      } else if (typeText.includes('ova')) {
+        type = 'ova';
+        break;
+      } else if (typeText.includes('tv') || typeText.includes('مسلسل')) {
+        type = 'tv';
+        break;
+      }
+    }
+  }
+  
+  // Try to extract type from page content for AnimerCO
+  const mediaInfoItems = doc.querySelectorAll('.media-info li');
+  for (let i = 0; i < mediaInfoItems.length; i++) {
+    const item = mediaInfoItems[i];
+    const text = item.textContent || '';
+    if (text.includes('النوع:')) {
+      const typeVal = item.querySelector('span')?.textContent?.trim()?.toLowerCase();
+      if (typeVal) {
+        if (typeVal.includes('movie') || typeVal.includes('فيلم')) type = 'movie';
+        else if (typeVal.includes('ova')) type = 'ova';
+        else if (typeVal.includes('tv')) type = 'tv';
+      }
+      break;
+    }
+  }
   
   // Extract status
-  const statusElement = doc.querySelector('.status, .anime-status, [class*="status"]');
-  const statusText = statusElement?.textContent?.trim()?.toLowerCase();
+  const statusSelectors = ['.anime-status a', '.status', '.anime-status', '[class*="status"]'];
   let status = 'ongoing';
-  if (statusText?.includes('completed') || statusText?.includes('مكتمل')) status = 'completed';
-  else if (statusText?.includes('upcoming') || statusText?.includes('قادم')) status = 'upcoming';
+  for (const selector of statusSelectors) {
+    const el = doc.querySelector(selector);
+    const statusText = el?.textContent?.trim()?.toLowerCase();
+    if (statusText) {
+      if (statusText.includes('completed') || statusText.includes('مكتمل') || statusText.includes('منتهي')) {
+        status = 'completed';
+        break;
+      } else if (statusText.includes('upcoming') || statusText.includes('قادم')) {
+        status = 'upcoming';
+        break;
+      } else if (statusText.includes('يعرض') || statusText.includes('ongoing') || statusText.includes('مستمر')) {
+        status = 'ongoing';
+        break;
+      }
+    }
+  }
   
   // Extract release year
-  const yearElement = doc.querySelector('.year, .release-year, [class*="year"], time');
-  const yearText = yearElement?.textContent?.trim();
-  const yearMatch = yearText?.match(/\d{4}/);
-  const release_year = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
+  let release_year = new Date().getFullYear();
+  const yearSelectors = ['.media-info li a[href*="release"]', '.anime-info:contains("بداية")', '.year', '.release-year', 'time'];
+  for (const selector of yearSelectors) {
+    const el = doc.querySelector(selector);
+    const yearText = el?.textContent?.trim();
+    const yearMatch = yearText?.match(/\d{4}/);
+    if (yearMatch) {
+      release_year = parseInt(yearMatch[0]);
+      break;
+    }
+  }
   
-  // Extract rating
-  const ratingElement = doc.querySelector('.rating, .score, [class*="rating"]');
-  const ratingText = ratingElement?.textContent?.trim();
-  const ratingMatch = ratingText?.match(/[\d.]+/);
-  const rating = ratingMatch ? parseFloat(ratingMatch[0]) : 0;
+  // Extract rating - AnimerCO has .score class
+  let rating = 0;
+  const ratingSelectors = ['.score', '.votes .score', '.rating', '.rate'];
+  for (const selector of ratingSelectors) {
+    const el = doc.querySelector(selector);
+    const ratingText = el?.textContent?.trim();
+    const ratingMatch = ratingText?.match(/[\d.]+/);
+    if (ratingMatch) {
+      rating = parseFloat(ratingMatch[0]);
+      if (rating > 0) break;
+    }
+  }
   
-  console.log('Extracted anime data:', { title, title_arabic, type, status, release_year, rating });
+  console.log('Extracted anime data:', { title, title_arabic, type, status, release_year, rating, cover_image, banner_image });
   
   const animeData = {
     title,
@@ -283,34 +448,76 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
     rating
   };
 
-    // Insert anime
-    const { data: insertedAnime, error: animeError } = await supabaseClient
-      .from('anime')
-      .insert([animeData])
-      .select()
-      .single();
+  // Insert anime
+  const { data: insertedAnime, error: animeError } = await supabaseClient
+    .from('anime')
+    .insert([animeData])
+    .select()
+    .single();
 
-    if (animeError) {
-      console.error('Error inserting anime:', animeError);
-      throw animeError;
-    }
+  if (animeError) {
+    console.error('Error inserting anime:', animeError);
+    throw animeError;
+  }
 
-    console.log('Anime inserted:', insertedAnime.id);
+  console.log('Anime inserted:', insertedAnime.id);
 
-  // Extract seasons and episodes with better selectors
-  const seasonElements = doc.querySelectorAll('.season, .season-item, .seasons-list > li, .season-block, [id*="season"], [class*="season-"]');
-  console.log('Found seasons:', seasonElements.length);
+  // Extract seasons with enhanced selectors for AnimerCO and other sites
+  // AnimerCO has seasons as links like /seasons/anime-name-season-X/
+  const seasonSelectors = [
+    // AnimerCO specific - look for links to season pages
+    'a[href*="/seasons/"]',
+    '.seasons-list a',
+    '.media-carousel .anime-card',
+    // General
+    '.season',
+    '.season-item',
+    '.seasons-list > li',
+    '.season-block',
+    '[id*="season"]',
+    '[class*="season-"]'
+  ];
   
-  if (seasonElements && seasonElements.length > 0) {
+  let seasonElements: any[] = [];
+  for (const selector of seasonSelectors) {
+    const elements = doc.querySelectorAll(selector);
+    if (elements && elements.length > 0) {
+      seasonElements = Array.from(elements);
+      console.log(`Found ${elements.length} seasons with selector "${selector}"`);
+      break;
+    }
+  }
+  
+  // If we found season links on AnimerCO, extract season info
+  if (seasonElements.length > 0) {
+    const processedSeasons = new Set<string>();
+    
     for (let i = 0; i < seasonElements.length; i++) {
       const seasonEl = seasonElements[i];
-      const seasonTitle = seasonEl.querySelector('.season-title, h3, h4')?.textContent?.trim() || `Season ${i + 1}`;
+      let seasonUrl = seasonEl.getAttribute('href') || seasonEl.querySelector('a')?.getAttribute('href');
+      
+      // Skip if already processed or not a season URL
+      if (!seasonUrl || processedSeasons.has(seasonUrl)) continue;
+      if (!seasonUrl.includes('/seasons/') && !seasonUrl.includes('season')) continue;
+      
+      processedSeasons.add(seasonUrl);
+      
+      // Extract season number from URL or content
+      const seasonNumMatch = seasonUrl.match(/season[_-]?(\d+)/i) || 
+                            seasonEl.textContent?.match(/الموسم\s*(\d+)/i) ||
+                            seasonEl.textContent?.match(/Season\s*(\d+)/i);
+      const seasonNumber = seasonNumMatch ? parseInt(seasonNumMatch[1]) : i + 1;
+      
+      let seasonTitle = seasonEl.querySelector('h3, h4, .info h3')?.textContent?.trim() || 
+                       seasonEl.textContent?.trim() || 
+                       `Season ${seasonNumber}`;
+      seasonTitle = decodeUnicodeEscapes(seasonTitle);
       
       const seasonData = {
         anime_id: insertedAnime.id,
-        season_number: i + 1,
-        title: seasonTitle,
-        title_arabic: seasonEl.querySelector('.season-title-arabic, [lang="ar"]')?.textContent?.trim() || `الموسم ${i + 1}`
+        season_number: seasonNumber,
+        title: seasonTitle.substring(0, 255),
+        title_arabic: `الموسم ${seasonNumber}`
       };
 
       const { data: insertedSeason, error: seasonError } = await supabaseClient
@@ -323,70 +530,161 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
         console.error('Error inserting season:', seasonError);
         continue;
       }
-
-      // Extract episodes for this season with improved selectors
-      const episodeElements = seasonEl.querySelectorAll('.episode, .episode-item, .episodes-list > li, .episode-block, a[href*="episode"], a[href*="الحلقة"], [class*="episode-"], [id*="episode"]');
-      console.log(`Season ${i + 1} - Found episodes:`, episodeElements.length);
       
-      for (let j = 0; j < episodeElements.length; j++) {
-      const episodeEl = episodeElements[j];
-      let episodeTitle = episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`;
-      episodeTitle = decodeUnicodeEscapes(episodeTitle);
-        const episodeThumbnail = getImageUrl(episodeEl.querySelector('img'), url);
-        
-        const episodeData = {
-          season_id: insertedSeason.id,
-          episode_number: j + 1,
-          title: episodeTitle,
-          title_arabic: episodeEl.querySelector('.episode-title-arabic, [lang="ar"]')?.textContent?.trim(),
-          thumbnail: episodeThumbnail
-        };
-
-        const { data: insertedEpisode, error: episodeError } = await supabaseClient
-          .from('episodes')
-          .insert([episodeData])
-          .select()
-          .single();
-
-        if (episodeError) {
-          console.error('Error inserting episode:', episodeError);
-          continue;
-        }
-
-        // Extract video servers with better logic
-        const serverLinks = episodeEl.querySelectorAll('a[href*="watch"], a[href*="video"], a[href*="player"], .server-link, .servers a, [class*="server"] a, .quality-buttons a');
-        console.log(`Episode ${j + 1} - Found servers:`, serverLinks.length);
-        
-        for (let k = 0; k < serverLinks.length; k++) {
-          const serverLink = serverLinks[k];
-          let serverName = serverLink.textContent?.trim() || serverLink.getAttribute('title') || serverLink.getAttribute('data-server') || `السيرفر ${k + 1}`;
-          serverName = decodeUnicodeEscapes(serverName);
-          let videoUrl = serverLink.getAttribute('href') || serverLink.getAttribute('data-url') || '';
+      console.log(`Season ${seasonNumber} inserted, fetching episodes...`);
+      
+      // Make season URL absolute
+      if (seasonUrl && seasonUrl.startsWith('/')) {
+        const urlObj = new URL(url);
+        seasonUrl = `${urlObj.protocol}//${urlObj.host}${seasonUrl}`;
+      }
+      
+      // Fetch season page to get episodes
+      if (seasonUrl) {
+        try {
+          await delay(Math.random() * 1000 + 500);
           
-          // Make URL absolute if needed
-          if (videoUrl && videoUrl.startsWith('/')) {
-            const urlObj = new URL(url);
-            videoUrl = `${urlObj.protocol}//${urlObj.host}${videoUrl}`;
-          } else if (videoUrl && !videoUrl.startsWith('http')) {
-            const urlObj = new URL(url);
-            videoUrl = `${urlObj.protocol}//${urlObj.host}/${videoUrl}`;
-          }
+          const seasonResponse = await fetch(seasonUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Referer': url
+            }
+          });
           
-          if (videoUrl && videoUrl.length > 10) {
-            const serverData = {
-              episode_id: insertedEpisode.id,
-              server_name: serverName.substring(0, 100),
-              video_url: videoUrl,
-              quality: '1080p'
-            };
+          if (seasonResponse.ok) {
+            const seasonHtml = await seasonResponse.text();
+            const seasonDoc = new DOMParser().parseFromString(seasonHtml, 'text/html');
+            
+            if (seasonDoc) {
+              // AnimerCO episodes are links like /episodes/anime-name-الحلقة-X/
+              const episodeSelectors = [
+                'a[href*="/episodes/"]',
+                '.episodes-card',
+                '.pinned-card a',
+                '.episode',
+                '.episode-item',
+                'a[href*="الحلقة"]'
+              ];
+              
+              let episodeElements: any[] = [];
+              for (const selector of episodeSelectors) {
+                const elements = seasonDoc.querySelectorAll(selector);
+                if (elements && elements.length > 0) {
+                  episodeElements = Array.from(elements);
+                  console.log(`Found ${elements.length} episodes with selector "${selector}"`);
+                  break;
+                }
+              }
+              
+              const processedEpisodes = new Set<number>();
+              
+              for (let j = 0; j < episodeElements.length; j++) {
+                const episodeEl = episodeElements[j];
+                let episodeUrl = episodeEl.getAttribute('href') || episodeEl.querySelector('a')?.getAttribute('href');
+                
+                // Extract episode number
+                const epNumMatch = episodeUrl?.match(/الحلقة[_-]?(\d+)/i) || 
+                                  episodeEl.textContent?.match(/الحلقة\s*(\d+)/i) ||
+                                  episodeUrl?.match(/episode[_-]?(\d+)/i);
+                const episodeNumber = epNumMatch ? parseInt(epNumMatch[1]) : j + 1;
+                
+                if (processedEpisodes.has(episodeNumber)) continue;
+                processedEpisodes.add(episodeNumber);
+                
+                let episodeTitle = episodeEl.querySelector('h3, .title')?.textContent?.trim() || 
+                                  `الحلقة ${episodeNumber}`;
+                episodeTitle = decodeUnicodeEscapes(episodeTitle);
+                
+                // Get thumbnail
+                const thumbEl = episodeEl.querySelector('.image, img');
+                const episodeThumbnail = thumbEl?.getAttribute('data-src') || getImageUrl(thumbEl, seasonUrl);
+                
+                const episodeData = {
+                  season_id: insertedSeason.id,
+                  episode_number: episodeNumber,
+                  title: `Episode ${episodeNumber}`,
+                  title_arabic: episodeTitle.substring(0, 255),
+                  thumbnail: episodeThumbnail
+                };
 
-            await supabaseClient.from('video_servers').insert([serverData]);
+                const { data: insertedEpisode, error: episodeError } = await supabaseClient
+                  .from('episodes')
+                  .insert([episodeData])
+                  .select()
+                  .single();
+
+                if (episodeError) {
+                  console.error('Error inserting episode:', episodeError);
+                  continue;
+                }
+                
+                // Make episode URL absolute and fetch video servers
+                if (episodeUrl && episodeUrl.startsWith('/')) {
+                  const urlObj = new URL(seasonUrl);
+                  episodeUrl = `${urlObj.protocol}//${urlObj.host}${episodeUrl}`;
+                }
+                
+                // Optionally fetch video servers from episode page
+                if (episodeUrl && insertedEpisode) {
+                  try {
+                    await delay(Math.random() * 500 + 300);
+                    
+                    const epResponse = await fetch(episodeUrl, {
+                      headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'text/html',
+                        'Referer': seasonUrl
+                      }
+                    });
+                    
+                    if (epResponse.ok) {
+                      const epHtml = await epResponse.text();
+                      const epDoc = new DOMParser().parseFromString(epHtml, 'text/html');
+                      
+                      if (epDoc) {
+                        // Extract video servers
+                        const serverElements = epDoc.querySelectorAll('.server-btn, .server-item, [data-server], .quality-btn a, iframe[src]');
+                        
+                        for (let k = 0; k < serverElements.length; k++) {
+                          const serverEl = serverElements[k] as any;
+                          let videoUrl = serverEl?.getAttribute?.('data-src') || 
+                                        serverEl?.getAttribute?.('src') || 
+                                        serverEl?.getAttribute?.('href') ||
+                                        serverEl?.getAttribute?.('data-url');
+                          
+                          if (videoUrl && videoUrl.length > 10) {
+                            if (videoUrl.startsWith('//')) videoUrl = 'https:' + videoUrl;
+                            
+                            const serverName = serverEl?.textContent?.trim() || 
+                                             serverEl?.getAttribute?.('title') || 
+                                             `السيرفر ${k + 1}`;
+                            
+                            await supabaseClient.from('video_servers').insert([{
+                              episode_id: insertedEpisode.id,
+                              server_name: serverName.substring(0, 100),
+                              video_url: videoUrl,
+                              quality: '1080p'
+                            }]);
+                          }
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Error fetching episode video servers:', e);
+                  }
+                }
+              }
+            }
           }
+        } catch (e) {
+          console.error('Error fetching season page:', e);
         }
       }
     }
   } else {
-    // If no seasons found, create a default season and try to extract episodes directly
+    // Fallback: Create default season and look for episodes directly
     console.log('No seasons found, creating default season');
     const defaultSeasonData = {
       anime_id: insertedAnime.id,
@@ -402,62 +700,60 @@ async function scrapeAnime(doc: any, url: string, supabaseClient: any) {
       .single();
 
     if (!seasonError && defaultSeason) {
-      const episodeElements = doc.querySelectorAll('.episode, .episode-item, .episodes-list > li, .episode-block, a[href*="episode"], a[href*="الحلقة"], [class*="episode-"], [id*="episode"]');
-      console.log('Found episodes in page:', episodeElements.length);
+      // Look for episodes on current page
+      const episodeElements = doc.querySelectorAll('a[href*="/episodes/"], a[href*="الحلقة"], .episode, .episode-item');
+      console.log('Found episodes on page:', episodeElements.length);
       
       for (let j = 0; j < episodeElements.length; j++) {
         const episodeEl = episodeElements[j];
-        let episodeTitle = episodeEl.querySelector('.episode-title, .title, span, strong')?.textContent?.trim() || `Episode ${j + 1}`;
+        const epNumMatch = episodeEl.textContent?.match(/الحلقة\s*(\d+)/i) || 
+                          episodeEl.getAttribute('href')?.match(/(\d+)/);
+        const episodeNumber = epNumMatch ? parseInt(epNumMatch[1]) : j + 1;
+        
+        let episodeTitle = episodeEl.textContent?.trim() || `Episode ${j + 1}`;
         episodeTitle = decodeUnicodeEscapes(episodeTitle);
         const episodeThumbnail = getImageUrl(episodeEl.querySelector('img'), url);
         
         const episodeData = {
           season_id: defaultSeason.id,
-          episode_number: j + 1,
-          title: episodeTitle,
-          title_arabic: episodeEl.querySelector('.episode-title-arabic, [lang="ar"]')?.textContent?.trim(),
+          episode_number: episodeNumber,
+          title: `Episode ${episodeNumber}`,
+          title_arabic: episodeTitle.substring(0, 255),
           thumbnail: episodeThumbnail
         };
 
-        const { data: insertedEpisode, error: episodeError } = await supabaseClient
-          .from('episodes')
-          .insert([episodeData])
-          .select()
-          .single();
-
-        if (!episodeError && insertedEpisode) {
-          const serverLinks = episodeEl.querySelectorAll('a[href*="watch"], a[href*="video"], a[href*="player"], .server-link, .servers a, [class*="server"] a');
-          for (let k = 0; k < serverLinks.length; k++) {
-            const serverLink = serverLinks[k];
-            let videoUrl = serverLink.getAttribute('href') || serverLink.getAttribute('data-url') || '';
-            
-            if (videoUrl && videoUrl.startsWith('/')) {
-              const urlObj = new URL(url);
-              videoUrl = `${urlObj.protocol}//${urlObj.host}${videoUrl}`;
-            }
-            
-            if (videoUrl && videoUrl.length > 10) {
-              const serverData = {
-                episode_id: insertedEpisode.id,
-                server_name: serverLink.textContent?.trim() || `السيرفر ${k + 1}`,
-                video_url: videoUrl,
-                quality: '1080p'
-              };
-              await supabaseClient.from('video_servers').insert([serverData]);
-            }
-          }
-        }
+        await supabaseClient.from('episodes').insert([episodeData]);
       }
     }
   }
 
-  // Extract genres with better selectors
-  const genreElements = doc.querySelectorAll('.genre, .tag, .category, .genres a, .tags a, .terms a, [class*="genre"] a, [class*="tag"] a, [rel="tag"]');
-  console.log('Found genres:', genreElements.length);
+  // Extract genres
+  const genreSelectors = [
+    '.genres a',
+    '.media-box .genres a',
+    '.anime-genres a',
+    '.genre a',
+    '.tag',
+    '.category a',
+    '.tags a',
+    '[rel="tag"]'
+  ];
+  
+  let genreElements: any[] = [];
+  for (const selector of genreSelectors) {
+    const elements = doc.querySelectorAll(selector);
+    if (elements && elements.length > 0) {
+      genreElements = Array.from(elements);
+      console.log(`Found ${elements.length} genres with selector "${selector}"`);
+      break;
+    }
+  }
   
   for (let i = 0; i < genreElements.length; i++) {
-    const genreName = genreElements[i].textContent?.trim();
+    let genreName = genreElements[i].textContent?.trim();
     if (!genreName || genreName.length < 2) continue;
+    
+    genreName = decodeUnicodeEscapes(genreName);
 
     const { data: existingGenre } = await supabaseClient
       .from('genres')
